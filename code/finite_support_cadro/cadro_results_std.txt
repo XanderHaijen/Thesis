@@ -1,0 +1,108 @@
+sigma = 0.1
+theta differences: 0.0 +- 0.0
+Maximum theta change: 0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.5
+theta differences: 0.0 +- 0.0
+Maximum theta change: 0.0
+loss change: -0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.7
+theta differences: -0.0229 +- 0.0851
+Maximum theta change: 0.0
+loss change: 0.9895 +- 4.3984%
+Best loss change: -0.0%
+
+sigma = 1.0
+theta differences: -0.0012 +- 0.1601
+Maximum theta change: 0.4557
+loss change: 0.1204 +- 2.4588%
+Best loss change: -6.2238%
+
+sigma = 1.5
+theta differences: 0.021 +- 0.2293
+Maximum theta change: 0.4709
+loss change: 0.418 +- 1.9942%
+Best loss change: -4.0667%
+
+sigma = 2.0
+theta differences: -0.0331 +- 0.352
+Maximum theta change: 0.8106
+loss change: 1.3464 +- 2.7546%
+Best loss change: -3.9801%
+
+sigma = 0.1
+theta differences: -0.0 +- 0.0
+Maximum theta change: 0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.5
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: 0.0%
+
+sigma = 0.7
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: 0.0%
+
+sigma = 1.0
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: 0.0%
+
+sigma = 1.5
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 2.0
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.1
+theta differences: -0.0 +- 0.0
+Maximum theta change: 0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.5
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 0.7
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 1.0
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 1.5
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
+sigma = 2.0
+theta differences: -0.0 +- 0.0
+Maximum theta change: -0.0
+loss change: 0.0 +- 0.0%
+Best loss change: -0.0%
+
