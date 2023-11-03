@@ -2,11 +2,11 @@ from typing import Callable, Union
 import numpy as np
 import cvxpy as cp
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
 import study_minimal
-import study_minimal_divergence
-from sklearn.decomposition import PCA
-from scipy.optimize import brentq, minimize, NonlinearConstraint, LinearConstraint
+from scipy.optimize import brentq
+import ellipsoids
+import warnings
+
 
 def ellipsoidal_cadro(data: np.ndarray,
                       data_test: np.ndarray,
@@ -16,8 +16,10 @@ def ellipsoidal_cadro(data: np.ndarray,
                       scaling_factor_ellipse: float = 1,
                       mu: float = 0.01,
                       nu: float = 0.8,
-                      generate_outliers: bool = False,
-                      outlier_fraction: float = 0.1) -> dict:
+                      generate_outliers: bool = None,
+                      outlier_fraction: float = None,
+                      ellipse_alg: str = "pca",
+                      ellipse_matrices=None) -> dict:
     """
     This function implements the ellipsoidal CADRO procedure for the least squares problem assuming a linear model and
     data with a finite support. The procedure is as follows:
@@ -36,6 +38,10 @@ def ellipsoidal_cadro(data: np.ndarray,
     :param nu: the parameter used in the definition of tau (float)
     :param generate_outliers: whether to generate outliers (bool)
     :param outlier_fraction: the fraction of data points which are outliers (float)
+    :param ellipse_alg: the algorithm used to construct the surrounding ellipse. Either "pca", 'lj', "circ" or "manual"
+    (str)
+    :param ellipse_matrices: the matrices used to construct the surrounding ellipse. Only used if ellipse_alg is
+    "manual" (tuple of np.ndarray in the order (A, a, c))
     :return: a dictionary containing the results of the procedure
         - theta_star: the optimal parameter (float)
         - test_loss: the test loss of the optimal parameter (float)
@@ -47,6 +53,7 @@ def ellipsoidal_cadro(data: np.ndarray,
         - alpha: the calibrated value of alpha (float)
         return is a dictionary
     """
+
     def least_squares_loss(theta, x, y):
         loss_vector = cp.sum_squares(y - cp.multiply(theta, x))
         return loss_vector
@@ -80,6 +87,9 @@ def ellipsoidal_cadro(data: np.ndarray,
             beta = 0
             return B, b, beta
 
+    if generate_outliers is not None or outlier_fraction is not None:
+        print("generate_outliers and outlier_fraction are deprecated.")
+
     # Step 0: divide the data into training, calibration, and test sets
     m = data.shape[1]
     m_train = tau(m, mu=mu, nu=nu)
@@ -94,27 +104,39 @@ def ellipsoidal_cadro(data: np.ndarray,
     y_test = data_test[1, :]
     m_test = data_test.shape[1]
 
-    # Step 1: find the surrounding ellipsoid for data_train
-    # using PCA, find the principal axes
-    pca = PCA(n_components=2)
-    pca.fit(data_train.T)
-    # the principal axes
-    u1 = pca.components_[0]
-    # corresponding singular values
-    s1 = pca.singular_values_[0]
-    s2 = pca.singular_values_[1]
-    # take the mean to find the center of the ellipse
-    center = np.mean(data_train, axis=1)
-    # find the angle between the first principal axis and the x-axis
-    cos_angle = np.abs(np.dot(u1, np.array([1, 0])) / np.linalg.norm(u1))
-    sin_angle = np.sqrt(1 - cos_angle ** 2)
-    R = np.array([[cos_angle, -sin_angle], [sin_angle, cos_angle]])
-    # quadratic matrix containing axis lengths
-    A = np.diag(np.array([1 / s1, 1 / s2]))
-    # find the surrounding ellipse parameters
-    A = - R @ A @ R.T
-    a = center.T @ A
-    c = - center.T @ A @ center + 1
+    # Step 1: solve some data-driven proxy (empirical risk minimization)
+    theta_0 = cp.Variable(1)
+    objective = cp.Minimize(least_squares_loss(theta_0, x_train, y_train))
+    problem = cp.Problem(objective)
+    problem.solve()
+    test_loss_0 = least_squares_loss(theta_0, x_test, y_test).value / m_test
+    if report:
+        print("The optimal theta is: ", theta_0.value)
+        print("The test loss is: ", test_loss_0)
+
+    if plot:
+        plt.figure()
+        plt.axes().set_aspect('equal')
+        plt.plot(x_train, y_train, 'bo', label='training data')
+        # plot predicted line
+        plt.plot(x_test, theta_0.value * x_test, 'r', label='first prediction')
+
+    # Step 2: find the surrounding ellipsoid for data_train
+    if ellipse_alg == "pca":
+        A, a, c = ellipsoids.ellipse_from_pca_2d(data_train, scaling_factor=scaling_factor_ellipse, plot=plot)
+    elif ellipse_alg == "lj":
+        A, a, c = ellipsoids.minimum_volume_ellipsoid(data_train, scaling_factor=scaling_factor_ellipse,
+                                                      theta0=theta_0.value[0], plot=plot)
+    elif ellipse_alg == "circ":
+        A, a, c = ellipsoids.smallest_enclosing_sphere(data_train, scaling_factor=scaling_factor_ellipse, plot=plot)
+    elif ellipse_alg == "manual":
+        if ellipse_matrices is None:
+            raise ValueError("ellipse_matrices must be given if ellipse_alg is 'manual'")
+        A, a, c = ellipse_matrices
+        if plot:
+            ellipsoids.plot_ellipse_from_matrices(A, a, c, theta0=1, n=200, padding=4)
+    else:
+        raise ValueError("ellipse_alg must be either 'pca', 'lj', 'circ' or 'manual'")
 
     # # for debugging: manually plot the ellipse
     # def inside_ellipse(xi):
@@ -131,62 +153,15 @@ def ellipsoidal_cadro(data: np.ndarray,
     # plt.show()
     # exit(0)
 
-    if generate_outliers:
-        # generate outliers: for some points, move them to the boundary of the ellipse
-        indices_train = np.random.choice(m_train, size=int(m_train * outlier_fraction), replace=False)
-        indices_cal = np.random.choice(m_cal, size=int(m_cal * outlier_fraction), replace=False)
-        for index_train in indices_train:
-            outlier_value = outlier(x_train[index_train], A, a, c, plot=False)
-            y_train[index_train] = outlier_value if outlier_value is not None else y_train[index_train]
-        for index_cal in indices_cal:
-            outlier_value = outlier(x_cal[index_cal], A, a, c, plot=False)
-            y_cal[index_cal] = outlier_value if outlier_value is not None else y_cal[index_cal]
-
-
-    if plot:
-        ellipse = Ellipse(xy=center, width=s1 * scaling_factor_ellipse, height=s2 * scaling_factor_ellipse,
-                          angle=np.rad2deg(np.arccos(cos_angle)), edgecolor='r', fc='None', lw=2)
-        # plot ellipse
-        fig, ax = plt.subplots()
-        ax.add_patch(ellipse)
-        plt.plot(x_train, y_train, 'bo', label='training data')
-        plt.legend()
-        plt.title("Surrounding ellipse")
-        plt.show()
-
-
-    # Step 2: solve some data-driven proxy (empirical risk minimization)
-    theta_0 = cp.Variable(1)
-    objective = cp.Minimize(least_squares_loss(theta_0, x_train, y_train))
-    problem = cp.Problem(objective)
-    problem.solve()
-    test_loss_0 = least_squares_loss(theta_0, x_test, y_test).value / m_test
-    if report:
-        print("The optimal theta is: ", theta_0.value)
-        print("The test loss is: ", test_loss_0)
-
-    if plot:
-        plt.axes().set_aspect('equal')
-        plt.plot(x_train, y_train, 'bo', label='training data')
-        # plot predicted line
-        plt.plot(x_test, theta_0.value * x_test, 'r', label='predicted line')
-        plt.legend()
-        plt.title(r"Initial model: $\theta_0$ = %.2f" % theta_0.value)
-        plt.show()
-
     # Step 3: Calibrate ambiguity set
     m_prime = y_cal.shape[0]
-    # divergence = study_minimal_divergence.Divergence.TV
-    # calibration = study_minimal_divergence.calibrate(divergence, nb_samples=1000, level=0.1, nb_scenarios=1000, confidence=0.01, full_output=True)
-    # alpha = calibration.radius
-    # print("The calibrated alpha using divergence is: ", alpha)
     calibration = study_minimal.calibrate(length=100, level=0.01, method="brentq", full_output=True)
     gamma = calibration.info["radius"]
     kappa = int(np.ceil(m_prime * gamma))
     eta = np.array([atomic_loss(theta_0.value, x_cal[i], y_cal[i])[0] for i in range(m_prime)])
     eta.sort(axis=0)
     B, b, beta = loss_matrices(theta_0.value[0])
-    eta_bar = calculate_eta_bar(B, b, beta, A, a.reshape((2, 1)), c, report=report)
+    eta_bar = calculate_eta_bar(B, b, beta, A, a, c, report=report)
     if eta_bar is None:
         eta_bar = np.max(eta)
     alpha = (kappa / m_prime - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_prime]) / m_prime + gamma * eta_bar
@@ -227,13 +202,19 @@ def ellipsoidal_cadro(data: np.ndarray,
 
     # Step 4.3 solve the problem
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     theta_star = theta.value[0]
     test_loss = least_squares_loss(theta_star, x_test, y_test).value / m_test
     if report:
         print("The optimal theta is: ", theta_star)
         print("The test loss is: ", test_loss)
         print("The difference between the optimal theta and the initial theta is: ", theta_star - theta_0)
+    if plot:
+        # plot a line with slope theta_star
+        plt.plot(x_test, theta_star * x_test, 'g', label='CADRO line')
+        plt.legend()
+        plt.title(r"Initial model: $\theta_0$ = %.2f, CADRO model: $\theta^*$ = %.2f" % (theta_0, theta_star))
+        plt.grid()
 
     reporting = {"theta_star": theta_star,
                  "test_loss": test_loss,
@@ -241,7 +222,8 @@ def ellipsoidal_cadro(data: np.ndarray,
                  "test_loss_0": test_loss_0,
                  "theta_difference": theta_star - theta_0,
                  "loss_difference": test_loss - test_loss_0,
-                 "alpha": alpha}
+                 "alpha": alpha,
+                 "A": A, "a": a, "c": c}  # ellipse matrices
     return reporting
 
 
@@ -289,6 +271,7 @@ def calculate_eta_bar(B, b, beta, A, a, c, report=False):
 
     return tau.value[0]
 
+
 def generate_data(x, rico, pdf: Union[str, Callable] = "normal",
                   set_zero: int = 0, mu: float = 0, sigma: float = 1) -> np.ndarray:
     if pdf == "normal":
@@ -307,52 +290,33 @@ def generate_data(x, rico, pdf: Union[str, Callable] = "normal",
     return y
 
 
-def outlier(x, A, a, c, up=None, plot=False):
-    def ellipse(x, y, A, a, c):
-        xi = np.array([x, y])
-        return xi.T @ A @ xi + 2 * a.T @ xi + c
+# def outlier(x, A, a, c, up=None, plot=False):
+#     deprecated
 
-    if up is None:
-        up = np.random.choice([True, False])
-    # set up ellipse equation
-    ellipse_eq = lambda y: ellipse(x, y, A, a, c)
-
-    if plot:
-        plt.plot(np.linspace(-5, 5, 100), [ellipse_eq(y) for y in np.linspace(-5, 5, 100)], 'r')
-        plt.show()
-
-    # find the roots of the equation
-    try:
-        if up:
-            roots = brentq(ellipse_eq, 0, 5, full_output=False, xtol=0.1)
-        else:
-            roots = brentq(ellipse_eq, -5, 0, full_output=False, xtol=0.1)
-    except ValueError:
-        return None
-
-    return roots
 
 def p(x, mu, sigma, n=1):
     pdf_normal = (1 / sigma * (2 * np.pi) ** 0.5) * np.exp(- (x - mu) ** 2 / (2 * sigma ** 2))
     pdf = pdf_normal * np.sin(x / n) ** 2 * (np.tanh((x - mu) / n) + 1) / 2
     return pdf
 
-if __name__ == "__main__":
-    mu = 0
-    sigma = 1
-    rico = 3
-    m = 150
-    m_test = 1000
-    x = np.linspace(0, 3, m)
-    np.random.shuffle(x)
-    pdf = lambda x, mu, sigma: p(x, mu, sigma, n=2)
-    y = generate_data(x, rico, pdf=pdf, set_zero=int(m/7), mu=mu, sigma=sigma)
-
-    data = np.vstack((x, y))
-    x_test = np.linspace(0, 3, m_test)
-    y_test = generate_data(x_test, rico, pdf=pdf, set_zero=int(m_test/7), mu=mu, sigma=sigma)
-    data_test = np.vstack((x_test, y_test))
-    results = ellipsoidal_cadro(data, data_test, tau, plot=True, report=False, generate_outliers=False,
-                                outlier_fraction=0.2)
-    print(f"Theta: {results['theta_0']:.8f} -> {results['theta_star']:.8f}")
-    print(f"Relative loss difference: {results['loss_difference'] / results['test_loss_0'] * 100:.4f} %")
+# if __name__ == '__main__':
+#     mu = 0
+#     rico = 1.75
+#     m_test = 1000
+#     m = 100
+#     sigma = 0.5
+#     x = np.linspace(-2, 2, m)
+#     np.random.shuffle(x)
+#     y = generate_data(x, rico, pdf="normal", mu=mu, sigma=sigma)
+#     data = np.vstack([x, y])
+#     # generate outliers: for m / 7 random points, set y = rico * x +/- 5 * sigma
+#     indices = np.random.choice(m, size=int(m / 7), replace=False)
+#     data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
+#
+#     data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico, pdf="normal",
+#                                                                         mu=mu, sigma=sigma)])
+#
+#     reporting = ellipsoidal_cadro(data, data_test, tau, plot=True, report=False, mu=0.01, nu=0.8,
+#                                     scaling_factor_ellipse=1, generate_outliers=False, outlier_fraction=0.1,
+#                                     ellipse_alg="lj")
+#     print(f"loss difference is {reporting['loss_difference'] / reporting['test_loss_0']* 100} %")

@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
-
 from SDP_procedure import *
 
-m = 100
+m = 70
 m_test = 1000
 rico = 3
 mu = 0
