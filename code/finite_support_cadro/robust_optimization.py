@@ -27,7 +27,7 @@ def solve_robust_quadratic_loss(A, a, c):
     constraints = [M >> 0] + lambda_positive
     objective = cp.Minimize(tau)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
 
     if problem.status == cp.INFEASIBLE:
         raise ValueError("Problem is infeasible")
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     R = np.array([[np.cos(rotation_angle), -np.sin(rotation_angle)], [np.sin(rotation_angle), np.cos(rotation_angle)]])
     A = R.T @ A @ R
     a = np.array([[0], [0]])
-    c = np.array([[1]])  # -1 to have a non-empty ellipsoid
+    c = np.array([[1]])
     theta, value = solve_robust_quadratic_loss(A, a, c)
     print("theta: ", theta)
     print("optimal value: ", value)
@@ -64,6 +64,4 @@ if __name__ == "__main__":
     plt.plot(x, y, label=r"$\theta^*$")
     plt.legend()
     plt.show()
-
-# --------------------------------------------------------------------------------------------------------------------------------
 

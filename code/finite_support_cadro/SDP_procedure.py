@@ -93,6 +93,10 @@ def ellipsoidal_cadro(data: np.ndarray,
     # Step 0: divide the data into training, calibration, and test sets
     m = data.shape[1]
     m_train = tau(m, mu=mu, nu=nu)
+    if m_train < 2:
+        if report:
+            print("The training set is too small. Setting m_train to 2.")
+        m_train = 2
     m_cal = m - m_train
     data_train = data[:, :m_train]
     x_train = data_train[0, :]
@@ -123,12 +127,12 @@ def ellipsoidal_cadro(data: np.ndarray,
 
     # Step 2: find the surrounding ellipsoid for data_train
     if ellipse_alg == "pca":
-        A, a, c = ellipsoids.ellipse_from_pca_2d(data_train, scaling_factor=scaling_factor_ellipse, plot=plot)
+        A, a, c = ellipsoids.ellipse_from_pca_2d(data, scaling_factor=scaling_factor_ellipse, plot=plot)
     elif ellipse_alg == "lj":
-        A, a, c = ellipsoids.minimum_volume_ellipsoid(data_train, scaling_factor=scaling_factor_ellipse,
+        A, a, c = ellipsoids.minimum_volume_ellipsoid(data, scaling_factor=scaling_factor_ellipse,
                                                       theta0=theta_0.value[0], plot=plot)
     elif ellipse_alg == "circ":
-        A, a, c = ellipsoids.smallest_enclosing_sphere(data_train, scaling_factor=scaling_factor_ellipse, plot=plot)
+        A, a, c = ellipsoids.smallest_enclosing_sphere(data, scaling_factor=scaling_factor_ellipse, plot=plot)
     elif ellipse_alg == "manual":
         if ellipse_matrices is None:
             raise ValueError("ellipse_matrices must be given if ellipse_alg is 'manual'")
@@ -155,7 +159,7 @@ def ellipsoidal_cadro(data: np.ndarray,
 
     # Step 3: Calibrate ambiguity set
     m_prime = y_cal.shape[0]
-    calibration = study_minimal.calibrate(length=100, level=0.01, method="brentq", full_output=True)
+    calibration = study_minimal.calibrate(length=m_prime, level=0.01, method="brentq", full_output=True)
     gamma = calibration.info["radius"]
     kappa = int(np.ceil(m_prime * gamma))
     eta = np.array([atomic_loss(theta_0.value, x_cal[i], y_cal[i])[0] for i in range(m_prime)])
@@ -223,6 +227,7 @@ def ellipsoidal_cadro(data: np.ndarray,
                  "theta_difference": theta_star - theta_0,
                  "loss_difference": test_loss - test_loss_0,
                  "alpha": alpha,
+                 "lambda": lambda_.value[0],
                  "A": A, "a": a, "c": c}  # ellipse matrices
     return reporting
 

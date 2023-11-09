@@ -86,7 +86,7 @@ def minimum_volume_ellipsoid(data, theta0: float, scaling_factor: float = 1, plo
     b = b.value
     A_bar = - A.T @ A
     b_bar = - A.T @ b
-    c_bar = scaling_factor - b.T @ b
+    c_bar = scaling_factor**2 - b.T @ b
 
     if plot and d == 2:
         n = 200
@@ -224,8 +224,8 @@ def plot_ellipse_from_matrices(A, a, c, theta0: float, x_max, x_min, y_max, y_mi
 
         try:
             # for x_max: both halves
-            y_window_up = (theta0 * x_max, y_max + padding)
-            y_window_low = (y_min - padding, theta0 * x_max)
+            y_window_up = (theta0 * x_max, y_max + padding**2)
+            y_window_low = (y_min - padding**2, theta0 * x_max)
             y_up = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_up, xtol=1e-6)
             y_low = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_low, xtol=1e-6)
             xs_upper.append(x_max)
@@ -238,17 +238,28 @@ def plot_ellipse_from_matrices(A, a, c, theta0: float, x_max, x_min, y_max, y_mi
         if fail == 2:
             break
 
-    xs_upper.reverse()
-    ys_upper.reverse()
-    xs = xs_upper + xs_lower
-    ys = ys_upper + ys_lower
-    xs.append(xs[0])
-    ys.append(ys[0])
+
 
     if equal_axis:
         plt.axis('equal')
-    plt.plot(xs, ys, color='r')
+    plt.plot(xs_lower, ys_lower, color='r')
+    plt.plot(xs_upper, ys_upper, color='r')
+    # connect the two halves
+    plt.plot([xs_lower[-1], xs_upper[-1]], [ys_lower[-1], ys_upper[-1]], color='r', linestyle='--')
+    plt.plot([xs_lower[0], xs_upper[0]], [ys_lower[0], ys_upper[0]], color='r', linestyle='--')
 
+
+def plot_circle_from_matrices(ax, A, b, c):
+    assert A.shape == (2, 2)
+    assert np.array_equal(A, - np.eye(2))
+
+    # plot the circle
+    center = b
+    radius = np.sqrt(c + b.T @ b)
+    circle = plt.Circle((center[0], center[1]), radius, color='r', fill=False)
+    ax.add_artist(circle)
+    ax.set_xlim(center[0] - 1.1 * radius, center[0] + 1.1 * radius)
+    ax.set_ylim(center[1] - 1.1 * radius, center[1] + 1.1 * radius)
 
 if __name__ == '__main__':
     x = np.linspace(0, 1, 100)
