@@ -176,7 +176,6 @@ def sdp_with_plots():
     plt.savefig("circ_alldata.png")
     plt.show()
 
-
 def robust_or_saa():
     """
     Script used to generate boxplots for theta_r, theta_star and theta_0 for different values of sigma. The boxplots
@@ -186,54 +185,80 @@ def robust_or_saa():
     mu = 0
     rico = 3
     m_test = 1000
-    m = 30
+    ms = (10, 50, 100, 150, 200)
     nb_tries = 50
-    sigmas = (0.1, 0.5, 0.75, 1, 1.5, 2, 2.5, 3)
-    theta_r = np.empty((len(sigmas), nb_tries))
-    theta_star = np.empty((len(sigmas), nb_tries))
-    theta_0 = np.empty((len(sigmas), nb_tries))
-    nb_collapses = np.empty((len(sigmas)))
-    for i, sigma in enumerate(sigmas):
-        for j in range(nb_tries):
-            x = np.linspace(-2, 2, m)
-            np.random.shuffle(x)
-            y = generate_data(x, rico, pdf="normal", mu=mu, sigma=sigma)
-            data = np.vstack([x, y])
-            # generate outliers: for m / 7 random points, set y = rico * x +/- 5 * sigma
-            indices = np.random.choice(m, size=int(m / 7), replace=False)
-            data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
-            data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico,
-                                                                            pdf="normal", mu=mu, sigma=sigma)])
-            results = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, mu=0.01, nu=0.8,
-                                        scaling_factor_ellipse=1, ellipse_alg="lj")
-            theta_robust, _ = solve_robust_quadratic_loss(results["A"], results["a"].value, results["c"])
-            theta_r[i, j] = theta_robust
-            theta_star[i, j] = results["theta_star"]
-            theta_0[i, j] = results["theta_0"]
-        # if theta_star is closer to theta_r than to theta_0, then the solution collapsed
-        nb_collapses[i] = np.sum(np.abs(theta_star[i, :] - theta_r[i, :]) < np.abs(theta_star[i, :] - theta_0[i, :]))
-        nb_collapses[i] /= nb_tries
-        print("sigma = ", sigma)
-        print("collapse rate: ", nb_collapses[i])
-        print("median theta_star: ", np.median(theta_star[i, :]))
-
-        # make boxplots for theta_r, theta_star and theta_0
-        fig, axs = plt.subplots(1, 3)
-        fig.suptitle(f"sigma = {sigma}. Collapse rate: {nb_collapses[i] * 100:.2f} %")
-        axs[0].boxplot(theta_r[i, :])
-        axs[0].set_title(r"$\theta_r$")
-        axs[1].boxplot(theta_star[i, :])
-        axs[1].set_title(r"$\theta^*$")
-        axs[2].boxplot(theta_0[i, :])
-        axs[2].set_title(r"$\theta_0$")
-        # fig.savefig(f"figures/theta_boxplots_lj/boxplots_sigma_{sigma}.png")
-        plt.show()
+    sigmas = (2, )  # 0.5, 0.75, 1, 1.5, 2, 2.5, 3)
+    theta_r_array = np.empty((len(ms), len(sigmas), nb_tries))
+    theta_star_array = np.empty((len(ms), len(sigmas), nb_tries))
+    theta_0_array = np.empty((len(ms), len(sigmas), nb_tries))
+    collapses = np.empty((len(ms), len(sigmas), nb_tries))
+    alphas_array = np.empty((len(ms), len(sigmas), nb_tries))
+    lambdas_array = np.empty((len(ms), len(sigmas), nb_tries))
+    for k, m in enumerate(ms):
+        for i, sigma in enumerate(sigmas):
+            for j in range(nb_tries):
+                x = np.linspace(-2, 2, m)
+                np.random.shuffle(x)
+                y = generate_data(x, rico, pdf="normal", mu=mu, sigma=sigma)
+                data = np.vstack([x, y])
+                # generate outliers: for m / 7 random points, set y = rico * x +/- 5 * sigma
+                indices = np.random.choice(m, size=int(m / 7), replace=False)
+                data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
+                data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico,
+                                                                                pdf="normal", mu=mu, sigma=sigma)])
+                results = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, mu=0.01, nu=0.8,
+                                            scaling_factor_ellipse=1, ellipse_alg="lj")
+                theta_0 = results["theta_0"]
+                theta_star = results["theta_star"]
+                theta_robust, _ = solve_robust_quadratic_loss(results["A"], results["a"].value, results["c"])
+                theta_r_array[k, i, j] = theta_robust
+                theta_star_array[k, i, j] = theta_star
+                theta_0_array[k, i, j] = theta_0
+                collapses[k, i, j] = np.abs(theta_0 - theta_star) > np.abs(theta_robust - theta_star)
+                alphas_array[k, i, j] = results["alpha"]
+                lambdas_array[k, i, j] = results["lambda"]
 
 
+
+            # make boxplots for theta_r, theta_star and theta_0
+            plt.figure()
+            nb_collapses = np.mean(collapses[k, i, :])
+            plt.title(f"sigma = {sigma}, m = {m}. Collapse rate: {nb_collapses * 100:.2f} %")
+            # plot a cross for every theta_r, theta_star and theta_0
+            plt.scatter(np.ones(nb_tries), theta_r_array[k, i, :], marker="x", label=r"$\theta_r$")
+            plt.scatter(2 * np.ones(nb_tries), theta_star_array[k, i, :], marker="x", label=r"$\theta^*$")
+            plt.scatter(3 * np.ones(nb_tries), theta_0_array[k, i, :], marker="x", label=r"$\theta_0$")
+            plt.xticks([1, 2, 3], [r"$\theta_r$", r"$\theta^*$", r"$\theta_0$"])
+            plt.legend()
+            plt.xlim(0, 4)
+            plt.grid()
+            plt.savefig(f"figures/opt_values/lj_thetas_sigma_{sigma}_m_{m}.png")
+
+            # get the indices of lambdas which are close to 0 (between -0.1 and 0.1)
+            plt.figure()
+            ind_lambdas = np.where(np.abs(lambdas_array[k, i, :]) < 0.1)[0]
+            frac_lambdas = len(ind_lambdas) / nb_tries
+            plt.title(f"sigma = {sigma}, m = {m}. Collapse rate: {nb_collapses * 100:.2f} %")
+            # plot a cross for every lambda and alpha
+            # every alpha corresponding to a lambda close to 0 is plotted in red, otherwise in blue
+            plt.scatter(np.ones(len(ind_lambdas)), alphas_array[k, i, ind_lambdas], marker='x', label=r"$\alpha_r$", color="r")
+            plt.scatter(np.ones(nb_tries - len(ind_lambdas)), alphas_array[k, i, np.delete(np.arange(nb_tries), ind_lambdas)], marker='x', color='b', label=r"$\alpha_0$")
+            plt.scatter(2 * np.ones(nb_tries), lambdas_array[k, i, :], marker="x", label=r"$\lambda$")
+            # add a text label with the fraction of lambdas close to 0
+            plt.text(2, 0.1, f"{frac_lambdas * 100:.2f} %", horizontalalignment="center", verticalalignment="center")
+            plt.text(2, 0.9, f"{(1 - frac_lambdas) * 100:.2f} %", horizontalalignment="center",
+                     verticalalignment="center")
+            plt.xticks([1, 2], [r"$\alpha$", r"$\lambda$"])
+            plt.xlim(0, 3)
+            plt.legend()
+            plt.grid()
+            plt.savefig(f"figures/opt_values/lj_alphas_lambdas_sigma_{sigma}_m_{m}.png")
+
+            plt.show()
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=UserWarning)
-    sdp_with_plots()
+    # sdp_with_plots()
     # sdp_sigma_m()
-    # robust_or_saa()
+    robust_or_saa()

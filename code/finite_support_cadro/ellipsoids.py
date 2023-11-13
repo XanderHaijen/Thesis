@@ -95,13 +95,8 @@ def minimum_volume_ellipsoid(data, theta0: float, scaling_factor: float = 1, plo
         x_max = np.max(data[0, :])
         y_max = np.max(data[1, :])
         y_min = np.min(data[1, :])
-        plt.figure()
         plot_ellipse_from_matrices(A_bar, b_bar, c_bar, theta0,
                                    x_max, x_min, y_max, y_min, n, padding)
-        plt.scatter(data[0, :], data[1, :])
-        plt.title(f"Löwner-John ellipsoid (scaled by {scaling_factor})")
-        plt.grid()
-        plt.show()
 
     return A_bar, b_bar, c_bar
 
@@ -143,15 +138,10 @@ def smallest_enclosing_sphere(data, scaling_factor: float = 1, plot: bool = Fals
     if plot and d == 2:
         # plot the circle
         circle = plt.Circle((center[0].value, center[1].value), radius, color='r', fill=False)
-        fig, ax = plt.subplots()
-        ax.add_artist(circle)
-        ax.set_aspect('equal')
-        ax.scatter(data[0, :], data[1, :])
+        plt.gca().add_patch(circle)
+        plt.gca().set_aspect('equal')
         plt.xlim(center[0].value - 1.25 * radius, center[0].value + 1.25 * radius)
         plt.ylim(center[1].value - 1.25 * radius, center[1].value + 1.25 * radius)
-        plt.grid()
-        plt.title(f"Smallest enclosing circle (scaling {scaling_factor})")
-        plt.show()
 
     return A_bar, b_bar, c_bar
 
