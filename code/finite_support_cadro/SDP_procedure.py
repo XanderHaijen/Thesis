@@ -21,7 +21,9 @@ def ellipsoidal_cadro(data: np.ndarray,
                       ellipse_alg: str = "lj",
                       ellipse_matrices=None,
                       theta: float = None,
-                      theta_0: float = None) -> dict:
+                      theta_0: float = None,
+                      R: np.ndarray = None,
+                      lengths: np.ndarray = None) -> dict:
     """
     This function implements the ellipsoidal CADRO procedure for the least squares problem assuming a linear model and
     data with a finite support. The procedure is as follows:
@@ -140,6 +142,11 @@ def ellipsoidal_cadro(data: np.ndarray,
                                                       theta0=3, plot=plot)
     elif ellipse_alg == "circ":
         A, a, c = ellipsoids.smallest_enclosing_sphere(data, scaling_factor=scaling_factor_ellipse, plot=plot)
+    elif ellipse_alg == "princ":
+        if R is None:
+            raise ValueError("R must be given if ellipse_alg is 'princ'")
+        A, a, c = ellipsoids.from_principal_axes(R, data, theta0=theta_0,
+                                                 lengths=lengths, scaling_factor=scaling_factor_ellipse, plot=plot)
     elif ellipse_alg == "manual":
         if ellipse_matrices is None:
             raise ValueError("ellipse_matrices must be given if ellipse_alg is 'manual'")

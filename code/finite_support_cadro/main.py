@@ -123,21 +123,24 @@ def sdp_with_plots():
     mu = 0
     rico = 3
     m_test = 1000
-    m = 10
+    m = 30
     sigma = 1
-    ellipse_alg = "circ"
+    ellipse_alg = "princ"
+    R = np.array([[np.cos(np.pi / 3), -np.sin(np.pi / 3)], [np.sin(np.pi / 3), np.cos(np.pi / 3)]])
+    # R = np.array([[1, 0], [0, 1]])
+    lengths = np.array([[1], [1.5]])
     x = np.linspace(-2, 2, m)
     np.random.shuffle(x)
     y = generate_data(x, rico, pdf="normal", mu=mu, sigma=sigma)
     data = np.vstack([x, y])
     # generate outliers: for m / 7 random points, set y = rico * x +/- 5 * sigma
-    indices = np.random.choice(m, size=int(m / 7), replace=False)
-    data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
+    # indices = np.random.choice(m, size=int(m / 7), replace=False)
+    # data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
     data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico, pdf="normal",
                                                                     mu=mu, sigma=sigma)])
 
     reporting = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, mu=0.01, nu=0.8,
-                                  scaling_factor_ellipse=1, ellipse_alg=ellipse_alg)
+                                  scaling_factor_ellipse=None, ellipse_alg=ellipse_alg, R=R, lengths=lengths)
     A, a, c = reporting["A"], reporting["a"], reporting["c"]
     a = a.value
     theta_r, loss = solve_robust_quadratic_loss(A, a, c)
@@ -152,7 +155,7 @@ def sdp_with_plots():
     print("lambda = ", lambda_)
     x_range = (np.min(x), np.max(x))
 
-    if ellipse_alg == "lj":
+    if ellipse_alg == "lj" or ellipse_alg == "princ":
         plt.figure(0)
         plt.scatter(data[0, :], data[1, :], label="data", marker=".")
         plt.plot(x_range, theta_r * np.array(x_range), label=r"$\theta_r = {:.4f}$".format(theta_r))
@@ -184,10 +187,12 @@ def robust_or_saa():
     """
     mu = 0
     rico = 3
+    R = np.array([[np.cos(np.pi / 5), -np.sin(np.pi / 5)], [np.sin(np.pi / 5), np.cos(np.pi / 5)]])
+
     m_test = 1000
-    ms = (10, 50, 100, 150, 200)
-    nb_tries = 50
-    sigmas = (2, )  # 0.5, 0.75, 1, 1.5, 2, 2.5, 3)
+    ms = (20, 50, 100, 200, 300)
+    nb_tries = 100
+    sigmas = (0.5, 0.75, 1, 1.5, 2, 2.5, 3)
     theta_r_array = np.empty((len(ms), len(sigmas), nb_tries))
     theta_star_array = np.empty((len(ms), len(sigmas), nb_tries))
     theta_0_array = np.empty((len(ms), len(sigmas), nb_tries))
@@ -207,7 +212,7 @@ def robust_or_saa():
                 data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico,
                                                                                 pdf="normal", mu=mu, sigma=sigma)])
                 results = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, mu=0.01, nu=0.8,
-                                            scaling_factor_ellipse=1, ellipse_alg="lj")
+                                            scaling_factor_ellipse=1, ellipse_alg="princ", R=R)
                 theta_0 = results["theta_0"]
                 theta_star = results["theta_star"]
                 theta_robust, _ = solve_robust_quadratic_loss(results["A"], results["a"].value, results["c"])
@@ -232,7 +237,7 @@ def robust_or_saa():
             plt.legend()
             plt.xlim(0, 4)
             plt.grid()
-            plt.savefig(f"figures/opt_values/lj_thetas_sigma_{sigma}_m_{m}.png")
+            plt.savefig(f"figures/rotated ellipse/princ_thetas_sigma_{sigma}_m_{m}.png")
 
             # get the indices of lambdas which are close to 0 (between -0.1 and 0.1)
             plt.figure()
@@ -252,13 +257,13 @@ def robust_or_saa():
             plt.xlim(0, 3)
             plt.legend()
             plt.grid()
-            plt.savefig(f"figures/opt_values/lj_alphas_lambdas_sigma_{sigma}_m_{m}.png")
+            plt.savefig(f"figures/rotated ellipse/princ_alphas_lambdas_sigma_{sigma}_m_{m}.png")
 
             plt.show()
 
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=UserWarning)
-    # sdp_with_plots()
+    sdp_with_plots()
     # sdp_sigma_m()
-    robust_or_saa()
+    # robust_or_saa()
