@@ -36,6 +36,11 @@ class RobustOptimization:
     def ellipsoid(self):
         return self.__ellipsoid
 
+    @property
+    def results(self):
+        return {"theta": self.theta, "cost": self.cost, "tau": self.tau, "lambda": self.lambda_,
+                "A": self.ellipsoid.A, "a": self.ellipsoid.a, "c": self.ellipsoid.c}
+
     def solve_1d_linear_regression(self):
         """
             Solve the robust case for a quadratic loss function and an ellipsoidal ambiguity set in the 2D case.
@@ -45,16 +50,16 @@ class RobustOptimization:
             l(xi, theta) = (xi_2 - theta * xi_1)^2.
             :return: the optimal theta, the optimal value, the optimal tau and the optimal lambda as a dictionary
         """
-        if self.theta is not None: # if the problem has already been solved, return the results
-            return {"theta": self.theta, "cost": self.cost, "tau": self.tau, "lambda": self.lambda_}
+        if self.theta is not None:  # if the problem has already been solved, return the results
+            return self.results
         else:
             self._solve_robust_1d_linreg()
-            return {"theta": self.theta, "cost": self.cost, "tau": self.tau, "lambda": self.lambda_}
+            return self.results
 
     def _solve_robust_1d_linreg(self):
-        A = self.__ellipsoid.A
-        a = self.__ellipsoid.a
-        c = self.__ellipsoid.c
+        A = self.ellipsoid.A
+        a = self.ellipsoid.a
+        c = self.ellipsoid.c
 
         assert A.shape == (2, 2)
         assert a.shape == (2, 1)
@@ -81,7 +86,6 @@ class RobustOptimization:
         self.theta = self.theta.value
         self.tau = self.tau.value
         self.lambda_ = self.lambda_.value
-        return self.theta, self.cost, self.tau, self.lambda_
 
 
 class RobustOptimizationTester:

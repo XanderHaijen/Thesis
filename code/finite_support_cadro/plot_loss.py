@@ -1,5 +1,7 @@
-from SDP_procedure import ellipsoidal_cadro, tau, generate_data, generate_outliers
 from robust_optimization import RobustOptimization
+from continuous_cadro import CADRO1DLinearRegression
+from ellipsoids import Ellipsoid
+from utils.data_generator import ScalarDataGenerator
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
@@ -11,34 +13,40 @@ def main():
     m_test = 1000
     m = 50
     sigma = 1
-    theta = np.linspace(0.30, 0.40, 100)
+    theta = np.linspace(0, 5, 100)
     theta_0 = 0.35
-    scaling_factor_ellipse = 1
     loss = np.zeros(len(theta))
     objective = np.zeros(len(theta))
 
     # setup data
     x = np.linspace(-2, 2, m)
+    x_test = np.linspace(-2, 2, m_test)
     np.random.shuffle(x)
-    y = generate_data(x, rico, pdf="normal", mu=0, sigma=sigma)
+    data_gen = ScalarDataGenerator(x, seed=0)
+    test_data_gen = ScalarDataGenerator(x_test, seed=0)
+    y = data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)
+    # beta distribution
+    # y = data_gen.generate_linear_beta_disturbance(0, sigma, rico, outliers=True)
     data = np.vstack((x, y))
-    generate_outliers(data, rico, sigma, 5, 1 / 7)
 
-    data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico,
-                                                                    pdf="normal", mu=0, sigma=sigma)])
+    y_test = test_data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)
+    data_test = np.vstack((x_test, y_test))
     R = np.array([[np.cos(np.pi / 3), -np.sin(np.pi / 3)], [np.sin(np.pi / 3), np.cos(np.pi / 3)]])
+    ellipsoid = Ellipsoid.from_principal_axes(R, data, rico)
     for i in range(len(theta)):
-        results = ellipsoidal_cadro(data, data_test, tau, theta=theta[i], ellipse_alg='princ', theta_0=theta_0,
-                                    scaling_factor_ellipse=scaling_factor_ellipse, R=R)
-        loss[i] = results['train_loss']
+        problem = CADRO1DLinearRegression(data, ellipsoid)
+        results = problem.solve(theta=theta[i])
+        loss[i] = problem.test_loss(data_test)
         objective[i] = results['lambda'] * results['alpha'] + results['tau']
 
     # get theta_0, theta_r and theta_star
-    results = ellipsoidal_cadro(data, data_test, tau, ellipse_alg='princ', theta_0=theta_0,
-                                scaling_factor_ellipse=scaling_factor_ellipse, plot=True, R=R)
+    problem = CADRO1DLinearRegression(data, ellipsoid)
+    results = problem.solve()
     theta_0 = results['theta_0']
-    theta_star = results['theta_star']
-    theta_r, _ = solve_robust_quadratic_loss(results['A'], results['a'], results['c'])
+    theta_star = results['theta']
+    robust_opt = RobustOptimization(ellipsoid)
+    results_r = robust_opt.solve_1d_linear_regression()
+    theta_r = results_r['theta']
     print("m: ", m, " sigma: ", sigma)
     print("theta_0: ", theta_0)
     print("theta_r: ", theta_r)

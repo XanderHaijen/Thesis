@@ -7,7 +7,7 @@ from scipy.optimize import brentq
 
 
 class Ellipsoid:
-    def __init__(self, A, a, c):
+    def __init__(self, A, a, c, shape=None, center=None):
         n, m = A.shape
         assert n == m
         assert a.shape == (n, 1)
@@ -19,6 +19,14 @@ class Ellipsoid:
         self.c = c
         self.circle = (n == 2 and np.array_equal(A, - np.eye(2)))
 
+        # shape and center for plotting (optional)
+        if self.dim == 2 or self.dim == 3:
+            self.shape = shape
+            self.center = center
+        else:
+            self.shape = None
+            self.center = None
+
     @staticmethod
     def is_nsd(A):
         """
@@ -28,8 +36,16 @@ class Ellipsoid:
         """
         return np.all(np.linalg.eigvals(A) <= 0)
 
-    def contains(self, x):
+    def __contains__(self, x):
         return x.T @ self.A @ x + 2 * self.a.T @ x + self.c >= 0
+
+    def contains(self, x):
+        return self.__contains__(x)
+
+
+    @property
+    def dim(self):
+        return self.A.shape[0]
 
     @staticmethod
     def lj_ellipsoid(data: np.ndarray, theta0: float, scaling_factor: float = 1, plot: bool = False):
@@ -68,17 +84,10 @@ class Ellipsoid:
         b_bar = - A.T @ b
         c_bar = scaling_factor ** 2 - b.T @ b
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar)
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -b))
 
         if plot and d == 2:
-            n = 200
-            padding = 4
-            x_min = np.min(data[0, :])
-            x_max = np.max(data[0, :])
-            y_max = np.max(data[1, :])
-            y_min = np.min(data[1, :])
-            ellipsoid._plot_ellipse_from_matrices(A_bar, b_bar, c_bar, theta0,
-                                       x_max, x_min, y_max, y_min, n, padding)
+            ellipsoid.plot()
 
         return ellipsoid
 
@@ -117,15 +126,10 @@ class Ellipsoid:
         b_bar = center.value
         c_bar = radius ** 2 - b_bar.T @ b_bar
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar)
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape = np.eye(d) / radius**2, center = center.value)
 
         if plot and d == 2:
-            # plot the circle
-            circle = plt.Circle((center[0].value, center[1].value), radius, color='r', fill=False)
-            plt.gca().add_patch(circle)
-            plt.gca().set_aspect('equal')
-            plt.xlim(center[0].value - 1.25 * radius, center[0].value + 1.25 * radius)
-            plt.ylim(center[1].value - 1.25 * radius, center[1].value + 1.25 * radius)
+            ellipsoid.plot()
 
         return ellipsoid
 
@@ -185,37 +189,54 @@ class Ellipsoid:
         b_bar = - A.T @ center
         c_bar = 1 - center.T @ center
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar)
+
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -center))
 
         if plot and d == 2:
-            # lengths = lengths.value[0], lengths.value[1]
-            # ellipse = Ellipse(xy=(-center[0], -center[1]), width=2 * 1 / lengths[0], height=2 * 1 / lengths[1],
-            #                   angle=np.rad2deg(np.arctan2(R[1, 0], R[0, 0])), edgecolor='r', fc='None')
-            # plt.gca().add_artist(ellipse)
-            ellipsoid._plot_ellipse_from_matrices(A_bar, b_bar, c_bar, theta0=theta0,
-                                       x_max=np.max(data[0, :]), x_min=np.min(data[0, :]),
-                                       y_max=np.max(data[1, :]), y_min=np.min(data[1, :]),
-                                       n=200, padding=4)
+            ellipsoid.plot()
 
         return ellipsoid
 
-    def plot(self, theta_0, ax=None, color='r'):
-        assert self.A.shape == (2, 2)
-        if ax is None:
-            ax = plt.gca()
-        if self.circle:
-            center = self.a
-            radius = np.sqrt(self.c + self.a.T @ self.a)
-            circle = plt.Circle((center[0].value, center[1].value), radius, color=color, fill=False)
-            ax.add_patch(circle)
-            ax.set_aspect('equal')
-            plt.xlim(center[0].value - 1.25 * radius, center[0].value + 1.25 * radius)
-            plt.ylim(center[1].value - 1.25 * radius, center[1].value + 1.25 * radius)
-        else:
-            self._plot_ellipse_from_matrices(self.A, self.a, self.c, theta0=1 / 4,
-                                       x_max=10, x_min=-10,
-                                       y_max=10, y_min=-10,
-                                       n=200, padding=4, color=color)
+    # def plot(self, theta_0:float = 0, ax=None, color='r'):
+    #     assert self.A.shape == (2, 2)
+    #     if ax is None:
+    #         ax = plt.gca()
+    #     if self.circle:
+    #         center = self.a
+    #         radius = np.sqrt(self.c + self.a.T @ self.a)
+    #         circle = plt.Circle((center[0].value, center[1].value), radius, color=color, fill=False)
+    #         ax.add_patch(circle)
+    #         ax.set_aspect('equal')
+    #         plt.xlim(center[0].value - 1.25 * radius, center[0].value + 1.25 * radius)
+    #         plt.ylim(center[1].value - 1.25 * radius, center[1].value + 1.25 * radius)
+    #     else:
+    #         self._plot_ellipse_from_matrices(self.A, self.a, self.c, theta0=1 / 4,
+    #                                    x_max=10, x_min=-10,
+    #                                    y_max=10, y_min=-10,
+    #                                    n=200, padding=4, color=color)
+
+    def plot(self, ax=None, **style):
+        """Plot an Ellipsoid set in 2D or 3D."""
+        if self.dim == 2:
+            return self._plot_ellipse2d(ax, **style)
+        if self.dim == 3:
+            return self._plot_ellipse3d(ax, **style)
+
+    def _plot_ellipse2d(self, ax=None, **style):
+        from matplotlib.patches import Ellipse
+        ax = plt.gca() if ax is None else ax
+        eigval, eigvec = np.linalg.eigh(self.shape)
+        angle = np.arctan2(*np.flip(eigvec[0, :])) / np.pi * 180.
+        lenx = 2. / np.sqrt(eigval[0])
+        leny = 2. / np.sqrt(eigval[1])
+        ellipse_patch = Ellipse(xy=(self.center[0], self.center[1]), width=lenx, height=leny, angle=angle,
+                                fill=False, **style)
+        ax.add_patch(ellipse_patch)
+        ax.autoscale_view()
+        return ax
+
+    def _plot_ellipse3d(self, ax = None, **style):
+        raise NotImplementedError("3D plotting not implemented yet.")
 
     @staticmethod
     def _plot_ellipse_from_matrices(A, a, c, theta0: float, x_max, x_min, y_max, y_min,
@@ -357,6 +378,7 @@ class EllipsoidTests:
         self.test_smallest_enclosing_sphere()
         self.test_from_principal_axes()
         self.test_from_principal_axes_with_lengths()
+
 
 if __name__ == '__main__':
     theta_0 = 3

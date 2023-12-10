@@ -1,5 +1,8 @@
-from SDP_procedure import *
-
+from continuous_cadro import CADRO1DLinearRegression
+import numpy as np
+from utils.data_generator import ScalarDataGenerator
+from ellipsoids import Ellipsoid
+import matplotlib.pyplot as plt
 
 m_list = [20, 50, 100, 200, 300, 500]
 m_test = 1000
@@ -12,21 +15,22 @@ loss_means = np.zeros(len(m_list))
 loss_stds = np.zeros(len(m_list))
 for i, m in enumerate(m_list):
     x = np.linspace(0, 1, m)
+    x_test = np.linspace(0, 1, m_test)
     np.random.shuffle(x)
+    datagen = ScalarDataGenerator(x, seed=0)
     nb_iter = 40
     differences = np.zeros(nb_iter)
     loss_changes = np.zeros(nb_iter)
-    pdf = lambda x, mu, sigma: p(x, mu, sigma, n=2)
     for _ in range(nb_iter):
-        y = generate_data(x, rico, pdf="normal", set_zero=int(m / 6), mu=mu, sigma=sigma)
+        y = datagen.generate_linear_norm_disturbance(mu, sigma, rico, outliers=True)
         data = np.vstack((x, y))
-        x_test = np.linspace(0, 1, m_test)
-        y_test = generate_data(x_test, rico, pdf="normal", set_zero=int(m_test / 6), mu=mu, sigma=sigma)
+        y_test = datagen.generate_linear_norm_disturbance(mu, sigma, rico, outliers=True)
         data_test = np.vstack((x_test, y_test))
-        results = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, generate_outliers=True,
-                                    outlier_fraction=0.2)
-        differences[_] = results["theta_difference"]
-        loss_changes[_] = results["loss_difference"] / results["test_loss_0"]
+        ellipsoid = Ellipsoid.lj_ellipsoid(data, rico, 1)
+        problem = CADRO1DLinearRegression(data, ellipsoid)
+        results = problem.solve()
+        differences[_] = results["theta"] - results["theta_0"]
+        loss_changes[_] = (results["loss"] - results["loss_0"]) / results["loss_0"]
 
     # print to file
     mean_difference = np.mean(differences)
