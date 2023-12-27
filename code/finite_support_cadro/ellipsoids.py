@@ -134,7 +134,8 @@ class Ellipsoid:
         return ellipsoid
 
     @staticmethod
-    def from_principal_axes(R: np.ndarray, data: np.ndarray, theta0: float, scaling_factor: Union[float, None] = 1,
+    def from_principal_axes(R: np.ndarray, data: np.ndarray, theta0: float = None,
+                            scaling_factor: Union[float, None] = 1,
                             plot: bool = False, lengths=None):
         """
         Compute the smallest possible ellipsoid that contains the given data, given that the principal axes of the

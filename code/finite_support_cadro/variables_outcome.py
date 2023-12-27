@@ -6,6 +6,7 @@ from robust_optimization import RobustOptimization
 from continuous_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 
+
 def sdp_with_plots(seed=0):
     mu = 0
     rico = 3
@@ -51,6 +52,7 @@ def sdp_with_plots(seed=0):
     plt.axis("equal")
     plt.show()
 
+
 def robust_or_saa():
     """
     Script used to generate plots displaying the realized values of theta_r, theta_star and theta_0 for different
@@ -58,9 +60,8 @@ def robust_or_saa():
     """
     mu = 0
     rico = 3
-    R = np.array([[np.cos(np.pi / 5), -np.sin(np.pi / 5)], [np.sin(np.pi / 5), np.cos(np.pi / 5)]])
+    R = np.array([[np.cos(np.pi / 4), -np.sin(np.pi / 4)], [np.sin(np.pi / 4), np.cos(np.pi / 4)]])
 
-    m_test = 1000
     ms = (20, 50, 100, 200, 300)
     nb_tries = 100
     sigmas = (0.5, 0.75, 1, 1.5, 2, 2.5, 3)
@@ -70,31 +71,35 @@ def robust_or_saa():
     collapses = np.empty((len(ms), len(sigmas), nb_tries))
     alphas_array = np.empty((len(ms), len(sigmas), nb_tries))
     lambdas_array = np.empty((len(ms), len(sigmas), nb_tries))
+
+    x_test = np.linspace(-2, 2, 50)
+    test_data_gen = ScalarDataGenerator(x_test, seed=0)
+    y_test = test_data_gen.generate_linear_norm_disturbance(mu, 4, rico, outliers=True)
+    data_test = np.vstack([x_test, y_test])
+    ellipsoid = Ellipsoid.from_principal_axes(R, data_test)
     for k, m in enumerate(ms):
         for i, sigma in enumerate(sigmas):
             for j in range(nb_tries):
                 x = np.linspace(-2, 2, m)
                 np.random.shuffle(x)
-                y = generate_data(x, rico, pdf="normal", mu=mu, sigma=sigma)
+                data_gen = ScalarDataGenerator(x, seed=0)
+                data_gen.generate_linear_norm_disturbance(mu, sigma, rico, outliers=True)
+                data_gen.contain_within_ellipse(ellipsoid)
+                y = data_gen.y
                 data = np.vstack([x, y])
-                # generate outliers: for m / 7 random points, set y = rico * x +/- 5 * sigma
-                indices = np.random.choice(m, size=int(m / 7), replace=False)
-                data[1, indices] = rico * data[0, indices] + np.random.choice([-1, 1], size=int(m / 7)) * 5 * sigma
-                data_test = np.array([np.linspace(-2, 2, m_test), generate_data(np.linspace(-2, 2, m_test), rico,
-                                                                                pdf="normal", mu=mu, sigma=sigma)])
-                results = ellipsoidal_cadro(data, data_test, tau, plot=False, report=False, mu=0.01, nu=0.8,
-                                            scaling_factor_ellipse=1, ellipse_alg="princ", R=R)
+                problem = CADRO1DLinearRegression(data, ellipsoid)
+                results = problem.solve()
                 theta_0 = results["theta_0"]
-                theta_star = results["theta_star"]
-                theta_robust, _ = solve_robust_quadratic_loss(results["A"], results["a"].value, results["c"])
+                theta_star = results["theta"]
+                robust_problem = RobustOptimization(ellipsoid)
+                robust_results = robust_problem.solve_1d_linear_regression()
+                theta_robust = robust_results["theta"]
                 theta_r_array[k, i, j] = theta_robust
                 theta_star_array[k, i, j] = theta_star
                 theta_0_array[k, i, j] = theta_0
                 collapses[k, i, j] = np.abs(theta_0 - theta_star) > np.abs(theta_robust - theta_star)
                 alphas_array[k, i, j] = results["alpha"]
                 lambdas_array[k, i, j] = results["lambda"]
-
-
 
             # make boxplots for theta_r, theta_star and theta_0
             plt.figure()
@@ -135,6 +140,5 @@ def robust_or_saa():
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=UserWarning)
-    sdp_with_plots()
-    # sdp_sigma_m()
-    # robust_or_saa()
+    # sdp_with_plots()
+    robust_or_saa()
