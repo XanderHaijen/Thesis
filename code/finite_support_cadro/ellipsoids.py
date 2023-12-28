@@ -48,7 +48,7 @@ class Ellipsoid:
         return self.A.shape[0]
 
     @staticmethod
-    def lj_ellipsoid(data: np.ndarray, theta0: float, scaling_factor: float = 1, plot: bool = False):
+    def lj_ellipsoid(data: np.ndarray, theta0: float = None, scaling_factor: float = 1, plot: bool = False):
         """
         Compute the Löwner-John ellipsoid of the given data. The ellipse is defined as
         {x | x^T A x + 2 a^T x + c => 0}.
@@ -58,6 +58,8 @@ class Ellipsoid:
         :param plot: whether to plot the ellipse along with the data points (only works for 2D data)
         :return: an Ellipsoid object
         """
+        if theta0 is not None:
+            print("Use of theta0 is no longer needed in Ellipsoid.lj_ellipsoid. It will be ignored.")
         if scaling_factor < 1:
             raise ValueError("Scaling factor must be greater than or equal to 1")
         d = data.shape[0]

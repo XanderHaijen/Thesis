@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Union
 
 import numpy as np
 from ellipsoids import Ellipsoid
@@ -6,6 +7,7 @@ from robust_optimization import RobustOptimization
 import cvxpy as cp
 import study_minimal
 import warnings
+
 
 class ContinuousCADRO:
     def __init__(self, data: np.ndarray, ellipse: Ellipsoid, solver=cp.MOSEK, split=None,
@@ -33,7 +35,7 @@ class ContinuousCADRO:
     def results(self):
         return {"theta_0": self.theta_0, "alpha": self.alpha, "lambda": self.lambda_, "tau": self.tau,
                 "gamma": self.gamma, "theta": self.theta, "theta_r": self.theta_r, "loss": self.loss,
-                "loss_r": self.loss_r, "loss_0": self.loss_0}
+                "loss_r": self.loss_r, "loss_0": self.loss_0, "objective": self.objective}
 
     @property
     @abstractmethod
@@ -49,6 +51,10 @@ class ContinuousCADRO:
     @abstractmethod
     def loss_0(self, index: int = 0) -> float:
         pass
+
+    @property
+    def objective(self):
+        return np.sum(self.alpha * self.lambda_) + self.tau
 
     def _set_data_split(self, m: int, mu=0.01, nu=0.8):
         split = int(np.floor(nu * mu * (m * (m + 1)) / (mu * m + nu)))
@@ -69,10 +75,15 @@ class ContinuousCADRO:
         if include_robust:
             print("loss_r = ", self.loss_r)
         print("loss_0 = ", self.loss_0)
+        print("objective = ", self.objective)
 
-    def solve(self, theta0: np.ndarray = None, theta: float = None, confidence_level: float = 0.05):
+    def solve(self, theta0: list = None, theta: float = None, confidence_level: float = 0.05,
+              nb_theta_0: int = 1):
+        # sanity checks
+        if theta0 is not None and len(theta0) != nb_theta_0:
+            raise ValueError("theta0 must be an array of length nb_theta_0")
         # step 1: find theta_0
-        self.set_theta_0(theta_0=theta0, nb_theta_0=1)
+        self.set_theta_0(theta_0=theta0, nb_theta_0=nb_theta_0)
         # Step 2: calibrate ambiguity set
         self.calibrate(confidence_level=confidence_level)
         # Step 3: solve the CADRO problem
@@ -91,7 +102,7 @@ class ContinuousCADRO:
         if self.theta_0 is None:
             raise ValueError("theta_0 is not set")
 
-        self.alpha = np.zeros(len(self.theta_0))
+        self.alpha = [0] * len(self.theta_0)
         for i in range(len(self.theta_0)):
             self._calibrate_index(index=i, confidence_level=confidence_level / len(self.theta_0))
 
@@ -99,7 +110,7 @@ class ContinuousCADRO:
         # randomly divide the data into nb_theta_0 batches
         self.generator.shuffle(data_batch_indices)
         data_batches = np.array_split(data_batch_indices, nb_theta_0)
-        theta_0s = np.zeros(nb_theta_0)
+        theta_0s = [0] * nb_theta_0
         for i, batch in enumerate(data_batches):
             theta_0s[i] = self._find_theta0_batch(batch)
         self.theta_0 = theta_0s
@@ -139,7 +150,7 @@ class ContinuousCADRO:
 
     @staticmethod
     @abstractmethod
-    def _loss_function(theta, x, y, cvxpy=False):
+    def _loss_function(theta, data, cvxpy=False):
         pass
 
     @staticmethod
@@ -162,21 +173,25 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         if self.theta is None:
             raise ValueError("theta is not set")
 
-        return self._loss_function(self.theta, self.data[0, :], self.data[1, :])
+        return self._loss_function(self.theta, self.data)
 
     @property
     def loss_r(self):
         if self.theta_r is None:
             return None
 
-        return self._loss_function(self.theta_r, self.data[0, :], self.data[1, :])
+        return self._loss_function(self.theta_r, self.data)
 
     @property
-    def loss_0(self, index: int = 0):
+    def loss_0(self, index: Union[int, None] = 0):
         if self.theta_0 is None:
             raise ValueError("theta_0 is not set")
 
-        return self._loss_function(self.theta_0[index], self.data[0, :], self.data[1, :])
+        if index is None:
+            losses = np.array([self._loss_function(theta_0, self.data) for theta_0 in self.theta_0])
+            return np.mean(losses)
+        else:
+            return self._loss_function(self.theta_0[index], self.data)
 
     def set_theta_r(self):
         robust_opt = RobustOptimization(self.ellipsoid, solver=self.solver)
@@ -187,7 +202,7 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         # solve the least squares problem (i.e. the sample average approach)
         theta0 = cp.Variable(1)
         train_data = self.data[:, data_batch_indices]
-        objective = cp.Minimize(self._loss_function(theta0, train_data[0, :], train_data[1, :], cvxpy=True))
+        objective = cp.Minimize(self._loss_function(theta0, train_data, cvxpy=True))
         problem = cp.Problem(objective)
         problem.solve(solver=self.solver)
         return theta0.value[0]
@@ -229,12 +244,15 @@ class CADRO1DLinearRegression(ContinuousCADRO):
 
     def _find_theta_star(self, theta=None):
         self.theta = cp.Variable(1) if theta is None else theta
-        self.lambda_ = cp.Variable(1)
+        self.lambda_ = cp.Variable(len(self.theta_0))
         self.tau = cp.Variable(1)
-        self.gamma = cp.Variable(1)
+        self.gamma = cp.Variable(len(self.theta_0))
 
         objective = cp.Minimize(self.alpha * self.lambda_ + self.tau)
-        constraints = [self.lambda_ >= 0, self.gamma >= 0] + self._lmi_constraint()
+        constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + \
+                      [gamma >= 0 for gamma in self.gamma]
+        for i in range(len(self.theta_0)):
+            constraints += self._lmi_constraint(index=i)
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=self.solver)
@@ -244,25 +262,24 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         elif problem.status == cp.OPTIMAL_INACCURATE:
             print("The problem is solved but the solution is inaccurate")
 
-        self.lambda_ = self.lambda_.value[0]
+        self.lambda_ = self.lambda_.value
         self.tau = self.tau.value[0]
-        self.gamma = self.gamma.value[0]
+        self.gamma = self.gamma.value
         if isinstance(self.theta, cp.Variable):
             self.theta = self.theta.value[0]
 
     def _lmi_constraint(self, index: int = 0):
-        theta0 = self.theta_0[index]
-        B_0 = np.array([[theta0 ** 2, -theta0], [-theta0, 1]])
-        # b_0 is column vector of size 2
-        b_0 = np.zeros((2, 1))
-        beta_0 = 0
+        theta_i = self.theta_0[index]
+        lambda_i = self.lambda_[index]
+        gamma_i = self.gamma[index]
+        B_0 = np.array([[theta_i ** 2, -theta_i], [-theta_i, 1]])
         # constructing M_11
         a = cp.reshape(self.ellipsoid.a, (2, 1))
-        M_111 = self.lambda_ * B_0 - self.gamma * self.ellipsoid.A
+        M_111 = lambda_i * B_0 - gamma_i * self.ellipsoid.A
         M_111 = cp.reshape(M_111, (2, 2))
-        M_112 = self.lambda_ * b_0 - self.gamma * self.ellipsoid.a
+        M_112 = gamma_i * self.ellipsoid.a  # + lambda_i * b_0
         M_112 = cp.reshape(M_112, (2, 1))
-        M_113 = self.tau + self.lambda_ * beta_0 - self.gamma * self.ellipsoid.c
+        M_113 = self.tau - gamma_i * self.ellipsoid.c  # + lambda_i * beta_0
         M_113 = cp.reshape(M_113, (1, 1))
         M_11 = cp.bmat([[M_111, M_112], [cp.transpose(M_112), M_113]])
         # constructing M_12 and M_21
@@ -279,10 +296,12 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         if self.theta is None:
             raise ValueError("theta is not set")
 
-        return self._loss_function(self.theta, test_data[0, :], test_data[1, :]) / test_data.shape[1]
+        return self._loss_function(self.theta, test_data) / test_data.shape[1]
 
     @staticmethod
-    def _loss_function(theta, x, y, cvxpy=False):
+    def _loss_function(theta, data, cvxpy=False):
+        x = data[0, :]
+        y = data[1, :]
         if cvxpy:
             return cp.sum_squares(y - cp.multiply(theta, x))
         else:

@@ -87,6 +87,12 @@ class RobustOptimization:
         self.tau = self.tau.value
         self.lambda_ = self.lambda_.value
 
+    def solve_least_squares(self):
+        """
+        Solve the multivariate least squares problem with ellipsoidal support.
+        """
+        raise NotImplementedError("Not implemented yet")
+
 
 class RobustOptimizationTester:
     def __init__(self, ellipsoid, type="1d_linreg", seed=0):
