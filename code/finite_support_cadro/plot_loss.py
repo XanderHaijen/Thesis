@@ -11,10 +11,9 @@ def main():
     np.random.seed(0)
     rico = 3
     m_test = 1000
-    m = 30
+    m = 100
     sigma = 1
     theta = np.linspace(0, 5, 100)
-    theta_0 = [2.5, 3.1]
     loss = np.zeros(len(theta))
     objective = np.zeros(len(theta))
 
@@ -31,23 +30,23 @@ def main():
 
     y_test = test_data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)
     data_test = np.vstack((x_test, y_test))
-    R = np.array([[np.cos(np.pi / 3), -np.sin(np.pi / 3)], [np.sin(np.pi / 3), np.cos(np.pi / 3)]])
-    ellipsoid = Ellipsoid.lj_ellipsoid(data)
+    ellipsoid = Ellipsoid.smallest_enclosing_sphere(data)
     for i in range(len(theta)):
         problem = CADRO1DLinearRegression(data, ellipsoid)
-        results = problem.solve(theta=theta[i], nb_theta_0=2, theta0=theta_0)
+        results = problem.solve(theta=theta[i], nb_theta_0=2, theta0=None)
         loss[i] = problem.test_loss(data_test)
         objective[i] = results['objective']
 
     # get theta_0, theta_r and theta_star
     problem = CADRO1DLinearRegression(data, ellipsoid)
-    results = problem.solve(theta0=theta_0, nb_theta_0=2)
+    results = problem.solve(theta0=None, nb_theta_0=2)
     theta_0 = results['theta_0']
     theta_star = results['theta']
     problem.set_theta_r()
     theta_r = problem.theta_r
     print("m: ", m, " sigma: ", sigma)
     problem.print_results(include_robust=True)
+
 
 
     # plot the loss function

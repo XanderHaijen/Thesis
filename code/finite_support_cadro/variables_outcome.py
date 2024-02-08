@@ -85,7 +85,7 @@ def robust_or_saa():
                 data_gen = ScalarDataGenerator(x, seed=0)
                 data_gen.generate_linear_norm_disturbance(mu, sigma, rico, outliers=True)
                 data_gen.contain_within_ellipse(ellipsoid)
-                y = data_gen.y
+                y = data_gen.__y
                 data = np.vstack([x, y])
                 problem = CADRO1DLinearRegression(data, ellipsoid)
                 results = problem.solve()

@@ -70,7 +70,7 @@ class LeastSquaresCadro(ContinuousCADRO):
         :param data_batch_indices: indices of the data to use for the SAA method
         :return: theta_0
         """
-        theta0 = cp.Variable(self.data.shape[0])
+        theta0 = cp.Variable((self.data.shape[0] - 1, 1))
         train_data = self.data[:, data_batch_indices]
         loss = self._loss_function(theta0, train_data, cvxpy=True)
         problem = cp.Problem(cp.Minimize(loss))
@@ -106,14 +106,28 @@ class LeastSquaresCadro(ContinuousCADRO):
         :param cvxpy: if True, return a cvxpy expression
         """
         if cvxpy:
-            Theta = cp.kron(cp.hstack([theta, -1]), np.eye(data.shape[1]))
+            # TODO: check dimensions
+            Theta = cp.kron(cp.hstack([theta.T, -np.ones([1, 1])]), np.eye(data.shape[0]))
             return cp.sum([cp.norm(Theta @ data[:, i]) ** 2 for i in range(data.shape[1])])
         else:
             Theta = np.kron(np.hstack([theta, -1]), np.eye(data.shape[1]))
             return np.sum([np.linalg.norm(Theta @ data[:, i]) ** 2 for i in range(data.shape[1])])
 
     def _eta_bar(self, index: int = 0):
-        raise NotImplementedError("Not implemented yet")
+        Theta_0 = self._loss_matrix(self.theta_0[index])
+        Theta_0_ext = np.vstack([Theta_0, np.zeros((1, Theta_0.shape[1]))])
+        A, a, c = self.ellipsoid.A, self.ellipsoid.a, self.ellipsoid.c
+        gamma_ = cp.Variable(1)
+        tau_ = cp.Variable(1)
+        M1 = cp.bmat([[-gamma_ * A, -gamma_ * a], [-gamma_ * a.T, tau_ + -gamma_ * c]])
+        M2 = Theta_0_ext.T @ Theta_0_ext
+        constraints = [gamma_ >= 0, M2 - M1 >> 0]
+        objective = cp.Minimize(tau_)
+        problem = cp.Problem(objective, constraints)
+        problem.solve(solver=self.solver)
+        if problem.status == cp.INFEASIBLE:
+            raise ValueError("eta_bar is infeasible for index " + str(index))
+        return tau_.value[0]
 
     def _find_theta_star(self, theta=None):
         self.theta = cp.Variable(self.data.shape[0]) if theta is None else theta
@@ -125,8 +139,10 @@ class LeastSquaresCadro(ContinuousCADRO):
 
         objective = cp.Minimize(self.tau + cp.sum(self.lambda_ * self.alpha))
         constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + \
-                      [gamma >= 0 for gamma in self.gamma] + \
-                      [self._lmi_constraint(theta0) for theta0 in self.theta_0]
+                      [gamma >= 0 for gamma in self.gamma]
+
+        for i in range(len(self.theta_0)):
+            constraints += self._lmi_constraint(i)
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=self.solver)
@@ -142,8 +158,26 @@ class LeastSquaresCadro(ContinuousCADRO):
         if isinstance(self.theta, cp.Variable):
             self.theta = self.theta.value
 
-    def _lmi_constraint(self, theta0):
-        raise NotImplementedError("Not implemented yet")
+    def _lmi_constraint(self, index) -> list:
+        gamma_i = self.gamma[index]
+        lambda_i = self.lambda_[index]
+        theta_i = self.theta_0[index]
+
+        Theta_i = self._loss_matrix(theta_i, cvxpy=True)
+        Theta = self._loss_matrix(self.theta, cvxpy=True)
+
+        # construct A_bar
+        A11 = lambda_i * Theta_i.T @ Theta_i - gamma_i * self.ellipsoid.A
+        A12 = - gamma_i * self.ellipsoid.a
+        A22 = self.tau - gamma_i * self.ellipsoid.c
+        A_bar = cp.bmat([[A11, A12], [A12.T, A22]])
+
+        # extend Theta_i with a zero row
+        Theta_i_ext = cp.vstack([Theta_i, np.zeros((1, Theta_i.shape[1]))])
+
+        # construct the LMI constraint
+        M = cp.bmat([[A_bar, Theta_i_ext], [Theta_i_ext.T, np.eye(Theta_i.shape[1])]])
+        return [M >> 0]
 
     def test_loss(self, test_data: np.ndarray) -> float:
         """
@@ -153,4 +187,13 @@ class LeastSquaresCadro(ContinuousCADRO):
         """
         return self._loss_function(self.theta, test_data)
 
-
+    def _loss_matrix(self,theta, cvxpy=False) -> Union[np.ndarray, cp.kron]:
+        """
+        Return the loss matrix Theta used in the optimization problem.
+        """
+        if cvxpy:
+            Theta = cp.kron(cp.hstack([theta, -1]), np.eye(self.data.shape[1]))
+            return Theta
+        else:
+            Theta = np.kron(np.hstack([theta, -1]), np.eye(self.data.shape[1]))
+            return Theta

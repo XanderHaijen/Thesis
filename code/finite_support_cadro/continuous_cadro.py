@@ -120,6 +120,18 @@ class ContinuousCADRO:
 
         return self.theta
 
+    def reset(self):
+        """
+        Resets the CADRO problem to its initial state. Only the data, the ellipsoid and the robust solution are kept.
+        The split is also kept.
+        """
+        self.theta_0 = None
+        self.alpha = None
+        self.lambda_ = None
+        self.tau = None
+        self.gamma = None
+        self.theta = None
+
     @abstractmethod
     def test_loss(self, test_data: np.ndarray) -> float:
         pass
@@ -156,11 +168,6 @@ class ContinuousCADRO:
     @staticmethod
     @abstractmethod
     def _scalar_loss(theta, x, y, cvxpy=False) -> float:
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def _loss_matrices(theta, cvxpy=False) -> tuple:
         pass
 
 
@@ -292,11 +299,22 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         # construct the constraints
         return [M >> 0]
 
-    def test_loss(self, test_data: np.ndarray) -> float:
+    def test_loss(self, test_data: np.ndarray, type: str = "theta", index: int = 0) -> float:
         if self.theta is None:
             raise ValueError("theta is not set")
+        if type not in ("theta", "theta_r", "theta_0"):
+            raise ValueError("type must be either theta, theta_r or theta_0")
 
-        return self._loss_function(self.theta, test_data) / test_data.shape[1]
+        if type == "theta":
+            return self._loss_function(self.theta, test_data) / test_data.shape[1]
+        elif type == "theta_r":
+            if self.theta_r is None:
+                raise ValueError("theta_r is not set")
+            return self._loss_function(self.theta_r, test_data) / test_data.shape[1]
+        else:
+            if self.theta_0 is None:
+                raise ValueError("theta_0 is not set")
+            return self._loss_function(self.theta_0[index], test_data) / test_data.shape[1]
 
     @staticmethod
     def _loss_function(theta, data, cvxpy=False):

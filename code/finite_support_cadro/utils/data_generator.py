@@ -13,14 +13,19 @@ class ScalarDataGenerator:
         """
         self.generator = np.random.default_rng(seed)
         self.x = x
-        self.y = np.zeros(len(x))
+        self.__y = np.zeros(len(x))
+
+    @property
+    def y(self):
+        # return a copy of y
+        return self.__y.copy()
 
     def generate_linear_norm_disturbance(self, mu: float, sigma: float, theta_0: float,
                                          outliers: bool = False) -> np.ndarray:
         y = theta_0 * self.x + self.generator.normal(mu, sigma, size=len(self.x))
         if outliers:
             self._generate_outliers(y, theta_0, sigma)
-        self.y = y
+        self.__y = y
         return y
 
     def generate_linear_beta_disturbance(self, a: float, b: float, theta_0: float,
@@ -46,5 +51,5 @@ class ScalarDataGenerator:
         :return: None. y is modified in place.
         """
         for i in range(len(self.x)):
-            while not ellipse.contains(np.array([self.x[i], self.y[i]])):
-                self.y[i] = self.generator.normal(0, 1)
+            while not ellipse.contains(np.array([self.x[i], self.__y[i]])):
+                self.__y[i] = self.generator.normal(0, 1)
