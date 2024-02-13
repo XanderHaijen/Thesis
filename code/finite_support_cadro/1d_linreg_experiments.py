@@ -453,25 +453,52 @@ def experiment45(seed):
         plt.savefig(f"thesis_figures/1d_linreg/exp5_{k}_loss.png")
         plt.show()
 
+    # Experiment 7: plot a histogram of the values of theta_0 and theta_star
+    for k in range(len(ellipses)):
+        ellipse = ellipses[k]
+        plt.figure()
+        plt.hist(theta_0_array[k, :], bins=20, label=r"$\theta_0$", range=(-5, 12))
+        plt.hist(theta_star_array[k, :], bins=20, label=r"$\theta^*$", range=(-5,12))
+        plt.legend()
+        plt.grid()
+        plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist.png")
+        plt.show()
+
+
+
 def experiment6():
     """
     plot the loss function for the circle and the LJ ellipsoid for different values of m
     and for both theta_0 and theta_star
     """
     lj_star = np.array([4.3915, 4.4084, 4.4264, 4.4394, 4.4873, 4.4917, 4.4749])
+    lj_star_upq = np.array([4.3915, 4.4084, 4.4264, 4.4394, 4.7893, 5.0232, 4.5896])
+    lj_star_downq = np.array([4.3195, 4.4084, 4.4262, 4.4394, 4.4190, 4.43616, 4.4199])
+
     lj_0 = np.array([6.6304, 17.6625, 25.8751, 18.4294, 6.4817, 4.5337, 4.4749])
+    lj_0_downq = np.array([4.9547, 6.1798, 12.4730, 8.4875, 4.7309, 4.3703, 4.4199])
+    lj_0_upq = np.array([9.8649, 36.0025, 108.5167, 34.9789, 10.9431, 5.4329, 4.5896])
+
 
     circ_star = np.array([6.7928, 7.0101, 7.4317, 7.1130, 7.3620, 7.2082, 4.4447])
+    circ_star_downq = np.array([6.7928, 7.0101, 7.4317, 7.1130, 5.7603, 4.8139, 4.4071])
+    circ_star_upq = np.array([6.79287, 7.0101, 7.4318, 7.1130, 7.3621, 7.2084, 4.5810])
+
     circ_0 = np.array([6.7024, 13.4722, 39.8733, 19.8666, 5.5588, 4.5478, 4.4446])
+    circ_0_downq = np.array([4.9390, 5.9448, 13.6888, 8.1248, 4.7207, 4.3661, 4.4071])
+    circ_0_upq = np.array([10.97, 31.51, 83.82, 35.0677, 9.25, 5.6358, 4.5339])
 
     m = [5, 10, 15, 20, 30, 50, 100]
 
     plt.figure()
-    plt.plot(m, lj_star, label=r"LJ, $\theta^*$", color="blue", marker="o")
-    plt.plot(m, lj_0, label=r"LJ, $\theta_0$", color="red", marker="x")
+    plt.errorbar(m, lj_star, yerr=[lj_star - lj_star_downq, lj_star_upq - lj_star], label=r"LJ, $\theta^*$", fmt='o-')
+    plt.errorbar(m, lj_0, yerr=[lj_0 - lj_0_downq, lj_0_upq - lj_0], label=r"LJ, $\theta_0$", fmt='o-')
     plt.grid()
     plt.xlabel("m")
     plt.ylabel("loss")
+    plt.ylim(0, 50)
+    plt.title(r"Loss for $\sigma=1$ (lj)")
     # x-axis is logarithmic
     plt.xscale("log")
     plt.legend()
@@ -479,16 +506,103 @@ def experiment6():
     plt.show()
 
     plt.figure()
-    plt.plot(m, circ_star, label=r"Circle, $\theta^*$", color="blue", marker="o")
-    plt.plot(m, circ_0, label=r"Circle, $\theta_0$", color="red", marker="x")
+    plt.errorbar(m, circ_star, yerr=[circ_star - circ_star_downq, circ_star_upq - circ_star], label=r"Circle, $\theta^*$", marker="o")
+    plt.errorbar(m, circ_0, yerr=[circ_0 - circ_0_downq, circ_0_upq - circ_0], label=r"Circle, $\theta_0$", marker="o")
     plt.grid()
     plt.xlabel("m")
     plt.ylabel("loss")
+    plt.title(r"Loss for $\sigma=1$ (circle)")
+    plt.ylim(0, 50)
     # x-axis is logarithmic
     plt.xscale("log")
     plt.legend()
     plt.savefig("thesis_figures/1d_linreg/exp6_circ_loss.pdf")
     plt.show()
+
+
+def experiment7(seed):
+    rico = 3
+    m = 50
+    sigma = 1
+    nb_tries = 300
+
+    x = np.linspace(0, 1, m)
+    data_gen = ScalarDataGenerator(x, seed)
+    y = data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)
+    data = np.vstack([x, y])
+    lj_ellipse = Ellipsoid.lj_ellipsoid(data)
+    circle = Ellipsoid.smallest_enclosing_sphere(data)
+    ellipses = (lj_ellipse, circle)
+
+    theta_r_array = np.zeros((len(ellipses)))
+    theta_star_array = np.zeros((len(ellipses), nb_tries))
+    theta_0_array = np.zeros((len(ellipses), nb_tries))
+
+    cost_r_array = np.zeros((len(ellipses)))
+    cost_star_array = np.zeros((len(ellipses), nb_tries))
+    cost_0_array = np.zeros((len(ellipses), nb_tries))
+
+    collapse_count = [0] * len(ellipses)
+    noncollapse_array = [0] * len(ellipses)
+    robustcost_array = [0] * len(ellipses)
+
+    test_x = np.linspace(0, 1, 1000)
+    test_data_gen = ScalarDataGenerator(test_x, seed)
+    test_data = np.vstack([test_x, test_data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)])
+
+    for k in range(len(ellipses)):
+        ellipse = ellipses[k]
+        type = "LJ" if k == 0 else "Circle"
+        for j in range(nb_tries):
+            data_gen.generate_linear_norm_disturbance(0, sigma, rico, outliers=True)
+            data_gen.contain_within_ellipse(ellipse)
+            data = np.vstack([x, data_gen.y])
+            problem = CADRO1DLinearRegression(data, ellipse)
+            results = problem.solve()
+            problem.set_theta_r()
+            if j == 0:
+                theta_r_array[k] = problem.theta_r
+                cost_r_array[k] = problem.test_loss(test_data, "theta_r")
+            theta_star_array[k, j] = results["theta"]
+            theta_0_array[k, j] = results["theta_0"][0]
+
+            if results["lambda"] < 0.5:
+                collapse_count[k] += 1
+
+            cost_star_array[k, j] = problem.test_loss(test_data, "theta")
+            cost_0_array[k, j] = problem.test_loss(test_data, "theta_0")
+
+        noncollapse_array[k] = [theta_r_array[k]] * collapse_count[k]
+        robustcost_array[k] = [cost_r_array[k]] * collapse_count[k]
+
+    # Experiment 7: plot a histogram of the values of theta_0 and theta_star
+    for k in range(len(ellipses)):
+        ellipse = ellipses[k]
+        plt.figure()
+        plt.hist(theta_0_array[k, :], bins=20, label=r"$\theta_0$", range=(-5, 12))
+        plt.hist(theta_star_array[k, :], bins=20, label=r"$\theta^*$", range=(-5, 12), rwidth=0.7)
+        plt.hist(noncollapse_array[k], bins=20, range=(-5, 12), rwidth=0.7)
+        plt.legend()
+        plt.grid()
+        plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist.png")
+        plt.show()
+        print(f"For {'Circle' if k == 1 else 'Löwner-John ellipsoid'}: theta_r = {theta_r_array[k]}")
+
+    # Experiment 7a: plot a histogram of the values of the test loss for theta_0 and theta_star
+    for k in range(len(ellipses)):
+        ellipse = ellipses[k]
+        plt.figure()
+        plt.hist(cost_0_array[k, :], bins=30, label=r"$J(\theta_0)$", range=(0, 40))
+        plt.hist(cost_star_array[k, :], bins=30, label=r"$J(\theta^*)$", rwidth=0.7, range=(0, 40))
+        plt.hist(robustcost_array[k], bins=30, range=(0, 40), rwidth=0.7)
+        plt.legend()
+        plt.grid()
+        plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist_testloss.png")
+        plt.show()
+        print(f"For {'Circle' if k == 1 else 'Löwner-John ellipsoid'}: cost_r = {cost_r_array[k]}")
+
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
@@ -497,4 +611,5 @@ if __name__ == "__main__":
     # experiment2(seed)
     # experiment3(seed)
     # experiment45(seed)
-    experiment6()
+    # experiment6()
+    experiment7(seed)
