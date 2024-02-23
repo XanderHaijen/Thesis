@@ -2,7 +2,7 @@ import numpy as np
 from utils.data_generator import ScalarDataGenerator
 from ellipsoids import Ellipsoid
 import matplotlib.pyplot as plt
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 
 m = 70
 m_test = 1000

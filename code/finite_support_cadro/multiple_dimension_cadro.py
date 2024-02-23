@@ -37,9 +37,9 @@ class LeastSquaresCadro(ContinuousCADRO):
         :return: the loss function at theta_r
         """
         if self.theta_r is None:
-            raise ValueError("theta_r has not been set yet.")
-        else:
-            return self._loss_function(self.theta_r, self.data)
+            self.set_theta_r()
+
+        return self._loss_function(self.theta_r, self.data)
 
     @property
     def loss_0(self, index: Union[int, None] = 0):
@@ -51,8 +51,8 @@ class LeastSquaresCadro(ContinuousCADRO):
         if self.theta_0 is None:
             raise ValueError("theta_0 has not been set yet.")
         elif index is None:
-            losses = np.array([self._loss_function(theta, self.data) for theta in self.theta_0])
-            return np.mean(losses)
+            # TODO implement taking mean
+            pass
         else:
             return self._loss_function(self.theta_0[index], self.data)
 
@@ -62,7 +62,7 @@ class LeastSquaresCadro(ContinuousCADRO):
         """
         robust_opt = RobustOptimization(self.ellipsoid, solver=self.solver)
         robust_opt.solve_least_squares()
-        self.theta_r = robust_opt.theta
+        self.theta_r = np.reshape(robust_opt.theta, (-1, 1))
 
     def _find_theta0_batch(self, data_batch_indices: np.ndarray):
         """
@@ -88,9 +88,8 @@ class LeastSquaresCadro(ContinuousCADRO):
         method = "asymptotic" if m_cal > asym_cutoff else "brentq"
         calibration = study_minimal.calibrate(length=m_cal, method=method, confidence_level=confidence_level,
                                               full_output=True)
-        gamma = calibration.info["gamma"]
+        gamma = calibration.info["radius"]
         kappa = int(np.ceil(m_cal * gamma))
-        # TODO: check if this is correct: should be use the calibration set or the training set to compute eta?
         eta = np.array([self._loss_function(self.theta_0[index], self.data[:, self.split + i]) for i in range(m_cal)])
         eta.sort(axis=0)
         eta_bar = self._eta_bar(index=index)
@@ -100,37 +99,33 @@ class LeastSquaresCadro(ContinuousCADRO):
     @staticmethod
     def _loss_function(theta, data, cvxpy=False):
         """
-        The loss function for the least squares problem, which uses kronecker products and the vec operator.
-        :param theta: (d, 1) vector
-        :param data: (d, m) matrix
-        :param cvxpy: if True, return a cvxpy expression
+        This function calculates the loss function for the given theta and data. The loss function is defined as
+        (x * theta^T - y)^2 summed over all data points.
+
+        :param theta: A (d, 1) vector. This is the parameter for which the loss function is calculated.
+        :param data: A (d, m) matrix. Each column in this matrix represents a data point.
+        :param cvxpy: A boolean value. If True, the function will return a cvxpy expression. Default is False.
+
+        :return: The loss function calculated for the given theta and data.
         """
-        if cvxpy:
-            # TODO: check dimensions
-            Theta = cp.kron(cp.hstack([theta.T, -np.ones([1, 1])]), np.eye(data.shape[0]))
-            return cp.sum([cp.norm(Theta @ data[:, i]) ** 2 for i in range(data.shape[1])])
+        if len(data.shape) > 1:
+            H = data[:-1, :]
+            h = data[-1, :].reshape((1, -1))
+            nb_samples = data.shape[1]
         else:
-            Theta = np.kron(np.hstack([theta, -1]), np.eye(data.shape[1]))
-            return np.sum([np.linalg.norm(Theta @ data[:, i]) ** 2 for i in range(data.shape[1])])
+            H = data[:-1].reshape((-1, 1))
+            h = data[-1].reshape((1, 1))
+            nb_samples = 1
 
-    def _eta_bar(self, index: int = 0):
-        Theta_0 = self._loss_matrix(self.theta_0[index])
-        Theta_0_ext = np.vstack([Theta_0, np.zeros((1, Theta_0.shape[1]))])
-        A, a, c = self.ellipsoid.A, self.ellipsoid.a, self.ellipsoid.c
-        gamma_ = cp.Variable(1)
-        tau_ = cp.Variable(1)
-        M1 = cp.bmat([[-gamma_ * A, -gamma_ * a], [-gamma_ * a.T, tau_ + -gamma_ * c]])
-        M2 = Theta_0_ext.T @ Theta_0_ext
-        constraints = [gamma_ >= 0, M2 - M1 >> 0]
-        objective = cp.Minimize(tau_)
-        problem = cp.Problem(objective, constraints)
-        problem.solve(solver=self.solver)
-        if problem.status == cp.INFEASIBLE:
-            raise ValueError("eta_bar is infeasible for index " + str(index))
-        return tau_.value[0]
+        # If cvxpy is True, return a cvxpy expression for the loss function
+        if cvxpy:
+            loss = cp.sum_squares(cp.matmul(cp.transpose(theta), H) - h) / nb_samples
+        else:
+            loss = np.sum((np.dot(np.transpose(theta), H) - h) ** 2) / nb_samples
 
+        return loss
     def _find_theta_star(self, theta=None):
-        self.theta = cp.Variable(self.data.shape[0]) if theta is None else theta
+        self.theta = cp.Variable(self.data.shape[0] - 1) if theta is None else theta
         if theta is not None:
             assert theta.shape == (self.data.shape[0], 1)
         self.lambda_ = cp.Variable(len(self.theta_0))
@@ -156,44 +151,47 @@ class LeastSquaresCadro(ContinuousCADRO):
         self.tau = self.tau.value[0]
         self.gamma = self.gamma.value
         if isinstance(self.theta, cp.Variable):
-            self.theta = self.theta.value
+            self.theta = np.reshape(self.theta.value, (-1, 1))
 
-    def _lmi_constraint(self, index) -> list:
-        gamma_i = self.gamma[index]
-        lambda_i = self.lambda_[index]
+    def _lmi_constraint(self, index: int = 0) -> list:
         theta_i = self.theta_0[index]
-
-        Theta_i = self._loss_matrix(theta_i, cvxpy=True)
-        Theta = self._loss_matrix(self.theta, cvxpy=True)
-
-        # construct A_bar
-        A11 = lambda_i * Theta_i.T @ Theta_i - gamma_i * self.ellipsoid.A
-        A12 = - gamma_i * self.ellipsoid.a
-        A22 = self.tau - gamma_i * self.ellipsoid.c
-        A_bar = cp.bmat([[A11, A12], [A12.T, A22]])
-
-        # extend Theta_i with a zero row
-        Theta_i_ext = cp.vstack([Theta_i, np.zeros((1, Theta_i.shape[1]))])
-
-        # construct the LMI constraint
-        M = cp.bmat([[A_bar, Theta_i_ext], [Theta_i_ext.T, np.eye(Theta_i.shape[1])]])
+        lambda_i = self.lambda_[index]
+        gamma_i = self.gamma[index]
+        B_i, _, _ = self._loss_matrices(theta_i)
+        theta_ext = cp.hstack([self.theta.T, np.array([-1, 0])])
+        theta_ext = cp.reshape(theta_ext, (1, theta_ext.shape[0]))
+        A_11 = lambda_i * B_i - gamma_i * self.ellipsoid.A
+        A_12 = gamma_i * self.ellipsoid.a
+        A_22 = self.tau - gamma_i * self.ellipsoid.c
+        A_22 = cp.reshape(A_22, (1, 1))
+        A = cp.bmat([[A_11, A_12], [cp.transpose(A_12), A_22]])
+        M = cp.bmat([[A, theta_ext.T], [theta_ext, cp.reshape(1.0, (1, 1))]])
         return [M >> 0]
 
-    def test_loss(self, test_data: np.ndarray) -> float:
+    def test_loss(self, test_data: np.ndarray, type: str) -> float:
         """
         Compute the loss on the test data.
         :param test_data: (d, m) matrix containing the test data
         :return: the loss on the test data
         """
-        return self._loss_function(self.theta, test_data)
+        if type not in ['theta_0', 'theta_r', 'theta']:
+            raise ValueError('Invalid type argument. Must be "theta_0", "theta_r" or "theta".')
 
-    def _loss_matrix(self,theta, cvxpy=False) -> Union[np.ndarray, cp.kron]:
+        if type == 'theta_0':
+            return self._loss_function(self.theta_0[0], test_data)
+        elif type == 'theta_r':
+            return self._loss_function(self.theta_r, test_data)
+        else:
+            return self._loss_function(self.theta, test_data)
+
+    def _loss_matrices(self, theta, cvxpy=False):
         """
-        Return the loss matrix Theta used in the optimization problem.
+        Return the loss matrices used in the optimization problem. These are the loss matrices
+        when the loss is computed for one data point.
         """
         if cvxpy:
-            Theta = cp.kron(cp.hstack([theta, -1]), np.eye(self.data.shape[1]))
-            return Theta
+            theta_ext = cp.hstack([theta.T, cp.reshape(-1.0, (1, 1))])
+            return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0
         else:
-            Theta = np.kron(np.hstack([theta, -1]), np.eye(self.data.shape[1]))
-            return Theta
+            theta_ext = np.hstack([theta.T, np.array([[-1]])])
+            return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0

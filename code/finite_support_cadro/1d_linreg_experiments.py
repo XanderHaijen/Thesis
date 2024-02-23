@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ellipsoids import Ellipsoid
 from robust_optimization import RobustOptimization
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 import pandas as pd
 
@@ -12,6 +12,8 @@ def experiment1(seed):
     """
     Experiment 1: create ellipsoids for illustration purposes
     """
+    plt.rcParams.update({'font.size': 15})
+
     rico = 2
     m = 30
     x = np.linspace(0, 1, m)
@@ -63,6 +65,8 @@ def experiment2(seed):
     Experiment 2: for a LJ ellipsoid and a circle, plot the realized values of theta_r, theta_star and theta_0 for
     illustrative purposes. We use a seperate i.i.d. data set to generate the ellipsoids.
     """
+    plt.rcParams.update({'font.size': 15})
+
     # 2.0 generate ellipsoids
     m = 50
     rico = 3
@@ -136,6 +140,8 @@ def experiment3(seed):
     Experiment 3: for a LJ ellipsoid and a circle, plot the realized values of alpha and lambda for illustrative
     purposes. We use a separate i.i.d. data set to generate the ellipsoids.
     """
+    plt.rcParams.update({'font.size': 10})
+
     # 3.0 generate ellipsoids
     m = 50
     rico = 3
@@ -157,6 +163,7 @@ def experiment3(seed):
 
 
 def experiment3_loop(ellipsoid, type, ms, sigmas, nb_tries, rico, seed, excel=True):
+
     # create figures
     theta_fig, theta_axs = plt.subplots(len(ms), len(sigmas))
     alpha_fig, alpha_axs = plt.subplots(len(ms), len(sigmas))
@@ -331,6 +338,8 @@ def experiment45(seed):
     Experiment 4: for one specific value of m and sigma, plot the realized values of theta_r, theta_star,
     theta_0 and alpha
     """
+    plt.rcParams.update({'font.size': 15})
+
     rico = 3
     m = 50
     sigma = 1
@@ -378,6 +387,7 @@ def experiment45(seed):
         plt.title(f"{'Circle' if type == 'circle' else 'Löwner-John ellipsoid'}")
         plt.grid()
         plt.legend()
+        plt.tight_layout()
         plt.savefig("thesis_figures/1d_linreg/exp4_{}_theta.png".format(type))
         plt.show()
 
@@ -401,6 +411,7 @@ def experiment45(seed):
         plt.title(f"{'Circle' if type == 'circle' else 'Löwner-John ellipsoid'}")
         plt.grid()
         plt.legend()
+        plt.tight_layout()
         plt.savefig("thesis_figures/1d_linreg/exp4_{}_alpha.png".format(type))
         plt.show()
 
@@ -415,7 +426,7 @@ def experiment45(seed):
         data_gen.contain_within_ellipse(ellipse)
         data = np.vstack([x, data_gen.y])
         if k == 0:
-            theta = np.linspace(1, 6, 100)
+            theta = np.linspace(2, 8, 100)
         else:
             theta = np.linspace(-1, 5, 100)
 
@@ -442,27 +453,16 @@ def experiment45(seed):
         plt.axvline(x=theta_r, linestyle="--", color="black")
         plt.axvline(x=theta_star, linestyle="--", color="red", label=r"$\theta^*$")
         if k == 0:
-            plt.xticks([theta_0, theta_r] + [1, 2, 3, 4, 5, 6],
-                       [r"$\theta_0$", r"$\theta_r$"] + ['1', '2', None, '4', '5', '6'])
+            plt.xticks([theta_0, theta_r] + [2, 3, 4, 5, 6, 7, 8],
+                       [r"$\theta_0$", r"$\theta_r$"] + ['2', '3', '4', '5', '6', '7', '8'])
         elif k == 1:
             plt.xticks([theta_0, theta_r] + [-1, 1, 2, 3, 4, 5],
                        [r"$\theta_0$", r"$\theta_r$"] + ['-1', '1', '2', '3', '4', '5'])
         plt.legend()
         plt.grid()
         plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.tight_layout()
         plt.savefig(f"thesis_figures/1d_linreg/exp5_{k}_loss.png")
-        plt.show()
-
-    # Experiment 7: plot a histogram of the values of theta_0 and theta_star
-    for k in range(len(ellipses)):
-        ellipse = ellipses[k]
-        plt.figure()
-        plt.hist(theta_0_array[k, :], bins=20, label=r"$\theta_0$", range=(-5, 12))
-        plt.hist(theta_star_array[k, :], bins=20, label=r"$\theta^*$", range=(-5,12))
-        plt.legend()
-        plt.grid()
-        plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
-        plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist.png")
         plt.show()
 
 
@@ -472,6 +472,8 @@ def experiment6():
     plot the loss function for the circle and the LJ ellipsoid for different values of m
     and for both theta_0 and theta_star
     """
+    plt.rcParams.update({'font.size': 15})
+
     lj_star = np.array([4.3915, 4.4084, 4.4264, 4.4394, 4.4873, 4.4917, 4.4749])
     lj_star_upq = np.array([4.3915, 4.4084, 4.4264, 4.4394, 4.7893, 5.0232, 4.5896])
     lj_star_downq = np.array([4.3195, 4.4084, 4.4262, 4.4394, 4.4190, 4.43616, 4.4199])
@@ -502,6 +504,7 @@ def experiment6():
     # x-axis is logarithmic
     plt.xscale("log")
     plt.legend()
+    plt.tight_layout()
     plt.savefig("thesis_figures/1d_linreg/exp6_lj_loss.pdf")
     plt.show()
 
@@ -516,11 +519,17 @@ def experiment6():
     # x-axis is logarithmic
     plt.xscale("log")
     plt.legend()
+    plt.tight_layout()
     plt.savefig("thesis_figures/1d_linreg/exp6_circ_loss.pdf")
     plt.show()
 
 
 def experiment7(seed):
+    """
+    Experiment 7: plot a histogram of the realized values of theta, and of the loss.
+    """
+    plt.rcParams.update({'font.size': 15})
+
     rico = 3
     m = 50
     sigma = 1
@@ -610,6 +619,6 @@ if __name__ == "__main__":
     # experiment1(seed)
     # experiment2(seed)
     # experiment3(seed)
-    # experiment45(seed)
+    experiment45(seed)
     # experiment6()
-    experiment7(seed)
+    # experiment7(seed)

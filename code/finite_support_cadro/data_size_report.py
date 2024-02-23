@@ -1,4 +1,4 @@
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 import numpy as np
 from utils.data_generator import ScalarDataGenerator
 from ellipsoids import Ellipsoid

@@ -7,7 +7,7 @@ from scipy.optimize import brentq
 
 
 class Ellipsoid:
-    def __init__(self, A, a, c, shape=None, center=None):
+    def __init__(self, A, a, c, shape=None, center=None, kind: str = None):
         n, m = A.shape
         assert n == m
         assert a.shape == (n, 1)
@@ -18,6 +18,7 @@ class Ellipsoid:
         self.a = a
         self.c = c
         self.circle = (n == 2 and np.array_equal(A, - np.eye(2)))
+        self.type = kind
 
         # shape and center for plotting (optional)
         if self.dim == 2 or self.dim == 3:
@@ -41,7 +42,6 @@ class Ellipsoid:
 
     def contains(self, x):
         return self.__contains__(x)
-
 
     @property
     def dim(self):
@@ -86,7 +86,7 @@ class Ellipsoid:
         b_bar = - A.T @ b
         c_bar = scaling_factor ** 2 - b.T @ b
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -b))
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -b), kind="LJ")
 
         if plot and d == 2:
             ellipsoid.plot()
@@ -128,7 +128,7 @@ class Ellipsoid:
         b_bar = center.value
         c_bar = radius ** 2 - b_bar.T @ b_bar
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape = np.eye(d) / radius**2, center = center.value)
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=np.eye(d) / radius ** 2, center=center.value, kind="SES")
 
         if plot and d == 2:
             ellipsoid.plot()
@@ -143,7 +143,9 @@ class Ellipsoid:
         Compute the smallest possible ellipsoid that contains the given data, given that the principal axes of the
         ellipse are known. The principal axes are given by the matrix R. The ellipse is defined as
         {x | x^T A x + 2 a^T x + c => 0}.
-        :param R: (d, d) matrix. The columns of R are the principal axes of the ellipse.
+        :param R: (d, d) matrix. The columns of R are the principal axes of the ellipse. The principal axes are assumed
+        to be orthonormal. Alternatively, a dict can be given with the keys 'd' and values 'v', where 'v' is the d-th
+        principal axis.
         :param data: (d, n) array of points
         :param scaling_factor: scaling factor for the ellipse
         :param theta0: the approximate slope of the data points defining the ellipse
@@ -170,6 +172,18 @@ class Ellipsoid:
         else:
             lengths = scaling_factor * cp.reshape(lengths, (d, 1))
         center = cp.Variable((d, 1))
+
+        # construct the principal axes matrix
+        if isinstance(R, dict):
+            # assert all given vectors are orthogonal
+            tol = 1e-6
+            for i in range(len(R.keys())):
+                for j in range(i + 1, len(R.keys())):
+                    assert np.abs(R[str(i)].T @ R[str(j)]) < tol
+
+            R = cp.hstack([R.get(str(i), cp.Variable((d, 1))) for i in range(d)])
+        # else: R is a numpy array
+
         # construct A as each column of R multiplied by the corresponding length
         A = cp.diag(lengths) @ R.T
         constraints = [A >> 0]
@@ -192,13 +206,21 @@ class Ellipsoid:
         b_bar = - A.T @ center
         c_bar = 1 - center.T @ center
 
-
         ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -center))
 
         if plot and d == 2:
             ellipsoid.plot()
 
         return ellipsoid
+
+    def normalize(self) -> None:
+        """
+        Normalize A, a, and c by dividing by the 2-norm of A
+        """
+        norm_factor = np.linalg.norm(self.A, ord=2)
+        self.A = self.A / norm_factor
+        self.a = self.a / norm_factor
+        self.c = self.c / norm_factor
 
     # def plot(self, theta_0:float = 0, ax=None, color='r'):
     #     assert self.A.shape == (2, 2)
@@ -238,7 +260,7 @@ class Ellipsoid:
         ax.autoscale_view()
         return ax
 
-    def _plot_ellipse3d(self, ax = None, **style):
+    def _plot_ellipse3d(self, ax=None, **style):
         raise NotImplementedError("3D plotting not implemented yet.")
 
     @staticmethod
@@ -258,6 +280,7 @@ class Ellipsoid:
         is plotted.
         :param equal_axis: whether to use equal axis
         """
+
         # TODO replace this with a more efficient algorithm (rcracers.utils.geometry.plot_ellipsoid)
         def ellipse(A, a, c, x, y):
             xy = np.array([[x], [y]])
@@ -310,8 +333,8 @@ class Ellipsoid:
 
             try:
                 # for x_max: both halves
-                y_window_up = (theta0 * x_max, y_max + padding**2)
-                y_window_low = (y_min - padding**2, theta0 * x_max)
+                y_window_up = (theta0 * x_max, y_max + padding ** 2)
+                y_window_low = (y_min - padding ** 2, theta0 * x_max)
                 y_up = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_up, xtol=1e-6)
                 y_low = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_low, xtol=1e-6)
                 xs_upper.append(x_max)
@@ -323,8 +346,6 @@ class Ellipsoid:
 
             if fail == 2:
                 break
-
-
 
         if equal_axis:
             plt.axis('equal')

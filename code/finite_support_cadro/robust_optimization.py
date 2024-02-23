@@ -91,7 +91,41 @@ class RobustOptimization:
         """
         Solve the multivariate least squares problem with ellipsoidal support.
         """
-        raise NotImplementedError("Not implemented yet")
+        A = self.ellipsoid.A
+        a = self.ellipsoid.a
+        c = self.ellipsoid.c
+
+        n = A.shape[0]
+        assert A.shape == (n, n)
+        assert a.shape == (n, 1)
+        assert c.shape == (1, 1)
+
+        self.theta = cp.Variable(n - 1)
+        self.tau = cp.Variable()
+        self.lambda_ = cp.Variable()
+
+        lambda_positive = [self.lambda_ >= 0]
+        A_bar = cp.bmat([[- self.lambda_ * A, -self.lambda_ * a],
+                         [- self.lambda_ * a.T, - self.lambda_ * c + self.tau]])
+        theta_ext = cp.hstack([self.theta.T, np.array([-1, 0])])
+        theta_ext = cp.reshape(theta_ext, (1, theta_ext.shape[0]))
+        M = cp.bmat([[A_bar, theta_ext.T],
+                     [theta_ext, cp.reshape(1.0, (1,1))]])
+
+        constraints = lambda_positive + [M >> 0]
+        objective = cp.Minimize(self.tau)
+        problem = cp.Problem(objective, constraints)
+        problem.solve(solver=self.solver)
+
+        if problem.status == cp.INFEASIBLE:
+            raise ValueError("Problem is infeasible")
+        elif problem.status == cp.OPTIMAL_INACCURATE:
+            print("Problem is solved but the solution is inaccurate")
+
+        self.cost = problem.value
+        self.theta = self.theta.value
+        self.tau = self.tau.value
+        self.lambda_ = self.lambda_.value
 
 
 class RobustOptimizationTester:

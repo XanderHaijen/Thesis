@@ -1,5 +1,5 @@
 from robust_optimization import RobustOptimization
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 from ellipsoids import Ellipsoid
 from utils.data_generator import ScalarDataGenerator
 import numpy as np

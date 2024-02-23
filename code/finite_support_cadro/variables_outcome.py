@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ellipsoids import Ellipsoid
 from robust_optimization import RobustOptimization
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 
 

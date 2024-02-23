@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ellipsoids import Ellipsoid
 from robust_optimization import RobustOptimization
-from continuous_cadro import CADRO1DLinearRegression
+from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 import pandas as pd
 
@@ -13,6 +13,8 @@ def experiment1(seed):
     For an LJ ellipsoid and a circle, plot the realized values of theta_r, theta_star and theta_0 for sigma=1 and
     m=30.
     """
+    plt.rcParams.update({'font.size': 15})
+
     n = 50
     sigma = 1
     rico = 3
@@ -96,6 +98,8 @@ def experiment3(seed):
     purposes. We use a separate i.i.d. data set to generate the ellipsoids.
     Experiment 4: plot the loss for sigma = 1 and different m
     """
+    plt.rcParams.update({'font.size': 10})
+
     # 3.0 generate ellipsoids
     m = 50
     rico = 3
@@ -285,6 +289,8 @@ def experiment3_loop(ellipsoid, type, ms, sigmas, nb_tries, rico, seed, excel=Tr
     theta_fig.savefig("thesis_figures/1d_linreg_multiple/{}_theta.png".format(type))
     plt.show()
 
+    plt.rcParams.update({'font.size': 15})
+
     # plot the loss for sigma = 1 and different m
     # collect the losses for sigma = 1
     sigma_index = 2
@@ -327,6 +333,8 @@ def experiment4(seed):
     """
     Plot the loss function for the circle and LJ ellipsoid sigma = 1 and m = 50
     """
+    plt.rcParams.update({'font.size': 15})
+
     m = 50
     sigma = 1
 
@@ -340,8 +348,8 @@ def experiment4(seed):
     x = np.linspace(0, 1, m)
     data_gen = ScalarDataGenerator(x, seed)
     data_gen.generate_linear_norm_disturbance(0, sigma, 3, outliers=True)
-    # data_gen.contain_within_ellipse(lj_ellipsoid)  # activate for LJ ellipsoid
-    data_gen.contain_within_ellipse(circle)
+    data_gen.contain_within_ellipse(lj_ellipsoid)  # activate for LJ ellipsoid
+    # data_gen.contain_within_ellipse(circle)
     data = np.vstack([x, data_gen.y])
 
     x_test = np.linspace(0, 1, 1000)
@@ -350,8 +358,8 @@ def experiment4(seed):
     test_data = np.vstack([x_test, test_data_gen.y])
 
     theta = np.linspace(-2.5, 4.5, 130)
-    # problem = CADRO1DLinearRegression(data, lj_ellipsoid)  # activate for LJ ellipsoid
-    problem = CADRO1DLinearRegression(data, circle)
+    problem = CADRO1DLinearRegression(data, lj_ellipsoid)  # activate for LJ ellipsoid
+    # problem = CADRO1DLinearRegression(data, circle)
     objective = np.zeros(len(theta))
     test_loss = np.zeros(len(theta))
 
@@ -381,19 +389,20 @@ def experiment4(seed):
     plt.axvline(x=theta_star, linestyle='--', color='g')
 
     plt.xticks([theta_1, theta_2, theta_r, theta_star] + [-2, -1, 0, 1, 2, 3, 4],
-               [r"$\theta_1$", r"$\theta_2$", None, r"$\theta^* \theta_r$"] + [-2, -1, None, 1, 2, 3, 4])
+               [r"     $\theta_1$", r"$\theta_2$", r"$\theta_r$", r"$\theta^*$"] + [-2, -1, 0, None, 2, 3, None])
 
     plt.legend()
     plt.xlabel(r"$\theta$")
     plt.ylabel(r"$\ell(\theta, \xi)$")
-    # plt.title("Loss function for LJ ellipsoid")
-    plt.title("Loss function for circular support")
+    plt.title("Loss function for LJ ellipsoid")
+    # plt.title("Loss function for circular support")
     plt.grid()
+    plt.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
     seed = 42
     # experiment1(seed)
-    # experiment3(seed)
-    experiment4(seed)
+    experiment3(seed)
+    # experiment4(seed)

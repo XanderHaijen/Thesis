@@ -53,3 +53,52 @@ class ScalarDataGenerator:
         for i in range(len(self.x)):
             while not ellipse.contains(np.array([self.x[i], self.__y[i]])):
                 self.__y[i] = self.generator.normal(0, 1)
+
+
+class MultivariateDataGenerator(np.random.RandomState):
+    """
+    MultivariateDataGenerator is a wrapper around np.random.default_rng and provides some
+    useful methods for experimentation with multivariate CADRO
+    """
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def uniform_unit_square(generator: np.random.default_rng, dimension: int, n: int) -> np.ndarray:
+        """
+        Generates n d-dimensional vectors uniformly distributed on the unit square
+        """
+        return generator.uniform(size=(dimension, n))
+
+    @staticmethod
+    def normal_disturbance(generator: np.random.default_rng,
+                           stdev: float, n: int, outliers: bool = False,
+                           outlier_rate: int = 7, outlier_size: float = 10) -> np.ndarray:
+        """
+        Generates n scalars distributed according to the normal distribution with mean 0 and standard deviation stdev.
+        This function generates a row vector
+        """
+        y = generator.normal(scale=stdev, size=n, loc=0)
+
+        if outliers:
+            p = [0.5 / outlier_rate, 0.5 / outlier_rate, 1 - 1 / outlier_rate]
+            y += generator.choice([-1, 1, 0], p=p, size=n, replace=True) * stdev * outlier_size
+
+        return y
+
+    @staticmethod
+    def contain_in_ellipsoid(generator: np.random.default_rng, data: np.ndarray, ellipsoid: Ellipsoid, slope: np.ndarray,
+                             x_range: tuple = (0, 1)) -> None:
+        """
+        Re-samples points which are not in the provided Ellipsoid. Re-sampling is done according to the standard
+        normal distribution.
+        """
+        d, n = data.shape
+        for i in range(n):
+            while not ellipsoid.contains(data[:, i]):
+                # re-sample the point from the range of x (range is a hypercube with lengths x_range)
+                data[:-1, i] = np.array([generator.uniform(x_range[0], x_range[1]) for _ in range(d - 1)])
+                data[-1, i] = np.dot(data[:-1, i], slope) + generator.normal(scale=1)
+
+
+
