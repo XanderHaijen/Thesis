@@ -77,25 +77,6 @@ class LeastSquaresCadro(ContinuousCADRO):
         problem.solve(solver=self.solver)
         return theta0.value
 
-    def _calibrate_index(self, index: int, asym_cutoff: int = 80, confidence_level: float = 0.05) -> None:
-        """
-        Calibrate the index-th alpha value to the given confidence level.
-        :param index: index of theta_0 to calibrate
-        :param confidence_level: confidence level
-        :return: None. alpha is modified in place.
-        """
-        m_cal = self.data.shape[1] - self.split
-        method = "asymptotic" if m_cal > asym_cutoff else "brentq"
-        calibration = study_minimal.calibrate(length=m_cal, method=method, confidence_level=confidence_level,
-                                              full_output=True)
-        gamma = calibration.info["radius"]
-        kappa = int(np.ceil(m_cal * gamma))
-        eta = np.array([self._loss_function(self.theta_0[index], self.data[:, self.split + i]) for i in range(m_cal)])
-        eta.sort(axis=0)
-        eta_bar = self._eta_bar(index=index)
-        alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
-        self.alpha[index] = alpha
-
     @staticmethod
     def _loss_function(theta, data, cvxpy=False):
         """
@@ -124,15 +105,24 @@ class LeastSquaresCadro(ContinuousCADRO):
             loss = np.sum((np.dot(np.transpose(theta), H) - h) ** 2) / nb_samples
 
         return loss
+
+    @staticmethod
+    def _scalar_loss(theta, x, y, cvxpy=False) -> float:
+        if not cvxpy:
+            loss = (np.dot(theta, x) - y) ** 2
+            return loss[0, 0]  # reshape to scalar
+        else:
+            return cp.square(cp.matmul(cp.transpose(theta), x) - y)
+
     def _find_theta_star(self, theta=None):
-        self.theta = cp.Variable(self.data.shape[0] - 1) if theta is None else theta
+        self.theta = cp.Variable(shape=(self.data.shape[0] - 1, 1)) if theta is None else theta
         if theta is not None:
-            assert theta.shape == (self.data.shape[0], 1)
+            assert theta.shape == (self.data.shape[0] - 1, 1)
         self.lambda_ = cp.Variable(len(self.theta_0))
         self.tau = cp.Variable(1)
         self.gamma = cp.Variable(len(self.theta_0))
 
-        objective = cp.Minimize(self.tau + cp.sum(self.lambda_ * self.alpha))
+        objective = cp.Minimize(self.alpha * self.lambda_ + self.tau)
         constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + \
                       [gamma >= 0 for gamma in self.gamma]
 
@@ -151,21 +141,21 @@ class LeastSquaresCadro(ContinuousCADRO):
         self.tau = self.tau.value[0]
         self.gamma = self.gamma.value
         if isinstance(self.theta, cp.Variable):
-            self.theta = np.reshape(self.theta.value, (-1, 1))
+            self.theta = self.theta.value[:, 0]
 
     def _lmi_constraint(self, index: int = 0) -> list:
         theta_i = self.theta_0[index]
         lambda_i = self.lambda_[index]
         gamma_i = self.gamma[index]
-        B_i, _, _ = self._loss_matrices(theta_i)
-        theta_ext = cp.hstack([self.theta.T, np.array([-1, 0])])
-        theta_ext = cp.reshape(theta_ext, (1, theta_ext.shape[0]))
+        B_i, _, _ = self._loss_matrices(theta_i, cvxpy=True)
+        ext = cp.vstack([-1, 0])
+        theta_vector = cp.vstack([self.theta, ext])
         A_11 = lambda_i * B_i - gamma_i * self.ellipsoid.A
         A_12 = gamma_i * self.ellipsoid.a
         A_22 = self.tau - gamma_i * self.ellipsoid.c
         A_22 = cp.reshape(A_22, (1, 1))
         A = cp.bmat([[A_11, A_12], [cp.transpose(A_12), A_22]])
-        M = cp.bmat([[A, theta_ext.T], [theta_ext, cp.reshape(1.0, (1, 1))]])
+        M = cp.bmat([[A, theta_vector], [theta_vector.T, cp.reshape(1, (1, 1))]])
         return [M >> 0]
 
     def test_loss(self, test_data: np.ndarray, type: str) -> float:
@@ -179,6 +169,7 @@ class LeastSquaresCadro(ContinuousCADRO):
 
         if type == 'theta_0':
             return self._loss_function(self.theta_0[0], test_data)
+            # TODO implement multiple initial guesses
         elif type == 'theta_r':
             return self._loss_function(self.theta_r, test_data)
         else:
@@ -190,7 +181,7 @@ class LeastSquaresCadro(ContinuousCADRO):
         when the loss is computed for one data point.
         """
         if cvxpy:
-            theta_ext = cp.hstack([theta.T, cp.reshape(-1.0, (1, 1))])
+            theta_ext = cp.vstack([theta, cp.reshape(-1.0, (1, 1))])
             return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0
         else:
             theta_ext = np.hstack([theta.T, np.array([[-1]])])

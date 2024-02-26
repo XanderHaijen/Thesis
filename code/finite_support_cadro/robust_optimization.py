@@ -100,17 +100,17 @@ class RobustOptimization:
         assert a.shape == (n, 1)
         assert c.shape == (1, 1)
 
-        self.theta = cp.Variable(n - 1)
+        self.theta = cp.Variable(shape=(n - 1, 1))
         self.tau = cp.Variable()
         self.lambda_ = cp.Variable()
 
         lambda_positive = [self.lambda_ >= 0]
         A_bar = cp.bmat([[- self.lambda_ * A, -self.lambda_ * a],
                          [- self.lambda_ * a.T, - self.lambda_ * c + self.tau]])
-        theta_ext = cp.hstack([self.theta.T, np.array([-1, 0])])
-        theta_ext = cp.reshape(theta_ext, (1, theta_ext.shape[0]))
-        M = cp.bmat([[A_bar, theta_ext.T],
-                     [theta_ext, cp.reshape(1.0, (1,1))]])
+        ext = cp.vstack([-1, 0])
+        theta_vector = cp.vstack([self.theta, ext])
+        M = cp.bmat([[A_bar, theta_vector],
+                     [theta_vector.T, cp.reshape(1, (1,1))]])
 
         constraints = lambda_positive + [M >> 0]
         objective = cp.Minimize(self.tau)
@@ -123,7 +123,7 @@ class RobustOptimization:
             print("Problem is solved but the solution is inaccurate")
 
         self.cost = problem.value
-        self.theta = self.theta.value
+        self.theta = self.theta.value[:, 0]
         self.tau = self.tau.value
         self.lambda_ = self.lambda_.value
 

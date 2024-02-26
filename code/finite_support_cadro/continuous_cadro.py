@@ -1,5 +1,6 @@
 from abc import abstractmethod
 import numpy as np
+import study_minimal
 from ellipsoids import Ellipsoid
 import cvxpy as cp
 import warnings
@@ -115,6 +116,20 @@ class ContinuousCADRO:
 
         return self.theta
 
+    def _calibrate_index(self, index: int = 0, asym_cutoff: int = 80, confidence_level: float = 0.05):
+        m_cal = self.data.shape[1] - self.split
+        method = "asymptotic" if m_cal > asym_cutoff else "brentq"
+        calibration = study_minimal.calibrate(length=m_cal, method=method, level=confidence_level,
+                                              full_output=True)
+        gamma = calibration.info['radius']
+        kappa = int(np.ceil(m_cal * gamma))
+        eta = np.array([self._scalar_loss(self.theta_0[index], self.data[0, self.split + i],
+                                          self.data[1, self.split + i]) for i in range(m_cal)])
+        eta.sort(axis=0)
+        eta_bar = self._eta_bar(index=index)
+        alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
+        self.alpha[index] = alpha
+
     def _eta_bar(self, index: int = 0):
         B, b, beta = self._loss_matrices(theta=self.theta_0[index], cvxpy=True)
         _tau = cp.Variable(1)
@@ -146,10 +161,6 @@ class ContinuousCADRO:
 
     @abstractmethod
     def test_loss(self, test_data: np.ndarray) -> float:
-        pass
-
-    @abstractmethod
-    def _calibrate_index(self, index: int, confidence_level: float) -> None:
         pass
 
     @abstractmethod

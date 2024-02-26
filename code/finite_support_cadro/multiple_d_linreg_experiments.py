@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from ellipsoids import Ellipsoid
 from robust_optimization import RobustOptimization
 from multiple_dimension_cadro import LeastSquaresCadro
+from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import MultivariateDataGenerator as MDG
 import pandas as pd
 from time import time
@@ -57,13 +58,14 @@ def experiment2(seed):
     sigma = 2
     rico = 3
     nb_tries = 50
-    dimensions = [20, 25, 30, 40]
+    dimensions = [2] #, 3, 4]
 
     # outcome: consists of 3-tuples [close to theta_r, close to theta_0, other]
     outcome_array = np.zeros((len(dimensions), 2, 3))
     test_loss_0_array = np.zeros((len(dimensions), 2, nb_tries))
     test_loss_star_array = np.zeros((len(dimensions), 2, nb_tries))
     lambda_array = np.zeros((len(dimensions), 2, nb_tries))
+    alpha_array = np.zeros((len(dimensions), 2, nb_tries))
     timings = np.zeros((len(dimensions), 2, nb_tries))
 
     for k, d in enumerate(dimensions):
@@ -73,7 +75,7 @@ def experiment2(seed):
         # support generating data
         x = MDG.uniform_unit_square(generator, d - 1, 2*m)
         y = (np.array([np.dot(x[:, i], slope) for i in range(2*m)]) +
-             MDG.normal_disturbance(generator, sigma, 2*m, False))
+             MDG.normal_disturbance(generator, sigma, 2*m, True))
         data = np.vstack([x, y])
         lj_ellipsoid = Ellipsoid.lj_ellipsoid(data)
         sphere = Ellipsoid.smallest_enclosing_sphere(data)
@@ -84,7 +86,7 @@ def experiment2(seed):
         m_test = 1000
         x_test = MDG.uniform_unit_square(generator, d - 1, m_test)
         y_test = np.array([np.dot(x_test[:, i], slope) for i in range(m_test)]) + \
-                 MDG.normal_disturbance(generator, sigma, m_test, False)
+                 MDG.normal_disturbance(generator, sigma, m_test, True)
         test_data = np.vstack([x_test, y_test])
 
         for i, ellipsoid in enumerate(ellipsoids):
@@ -92,7 +94,7 @@ def experiment2(seed):
                 # training data
                 x = MDG.uniform_unit_square(generator, d - 1, m)
                 y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma, m,
-                                                                                                  False)
+                                                                                                  True)
                 training_data = np.vstack([x, y])
                 MDG.contain_in_ellipsoid(generator, training_data, ellipsoid, slope)
                 problem = LeastSquaresCadro(training_data, ellipsoid)
@@ -125,6 +127,9 @@ def experiment2(seed):
                 # fill in lambda array
                 lambda_array[k, i, j] = problem.results["lambda"]
 
+                # fill in alpha array
+                alpha_array[k, i, j] = problem.results["alpha"][0]
+
             # plot a histogram for the losses for each dimension
             fig, ax = plt.subplots()
             hist_range = (min(np.min(test_loss_0_array[k, i, :]), np.min(test_loss_star_array[k, i, :])),
@@ -147,6 +152,13 @@ def experiment2(seed):
             # plot all the lambda values
             plt.scatter(np.ones(nb_tries), lambda_array[k, i, :], marker='.')
             plt.title(f"Lambda values for d = {d} ({ellipsoid.type})")
+            plt.ylim(0, 1.1)
+            plt.show()
+
+            # plot a scatter plot for the realized values of alpha
+            plt.figure()
+            plt.scatter(np.ones(nb_tries), alpha_array[k, i, :], marker='.', label=r"$\alpha$")
+            plt.title(f"Realized values of alpha and lambda for d = {d} ({ellipsoid.type})")
             plt.show()
 
     for i, ellipsoid in enumerate(ellipsoids):

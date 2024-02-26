@@ -4,7 +4,6 @@ import cvxpy as cp
 
 from ellipsoids import Ellipsoid
 from robust_optimization import RobustOptimization
-import study_minimal
 from continuous_cadro import ContinuousCADRO
 
 
@@ -52,20 +51,6 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         problem.solve(solver=self.solver)
         return theta0.value[0]
 
-    def _calibrate_index(self, index: int = 0, asym_cutoff: int = 80, confidence_level: float = 0.05):
-        m_cal = self.data.shape[1] - self.split
-        method = "asymptotic" if m_cal > asym_cutoff else "brentq"
-        calibration = study_minimal.calibrate(length=m_cal, method=method, level=confidence_level,
-                                              full_output=True)
-        gamma = calibration.info['radius']
-        kappa = int(np.ceil(m_cal * gamma))
-        eta = np.array([self._scalar_loss(self.theta_0[index], self.data[0, self.split + i],
-                                          self.data[1, self.split + i]) for i in range(m_cal)])
-        eta.sort(axis=0)
-        eta_bar = self._eta_bar(index=index)
-        alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
-        self.alpha[index] = alpha
-
     def _find_theta_star(self, theta=None):
         self.theta = cp.Variable(1) if theta is None else theta
         self.lambda_ = cp.Variable(len(self.theta_0))
@@ -98,21 +83,20 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         gamma_i = self.gamma[index]
         B_0 = np.array([[theta_i ** 2, -theta_i], [-theta_i, 1]])
         # constructing M_11
-        a = cp.reshape(self.ellipsoid.a, (2, 1))
-        M_111 = lambda_i * B_0 - gamma_i * self.ellipsoid.A
-        M_111 = cp.reshape(M_111, (2, 2))
-        M_112 = gamma_i * self.ellipsoid.a  # + lambda_i * b_0
-        M_112 = cp.reshape(M_112, (2, 1))
-        M_113 = self.tau - gamma_i * self.ellipsoid.c  # + lambda_i * beta_0
-        M_113 = cp.reshape(M_113, (1, 1))
-        M_11 = cp.bmat([[M_111, M_112], [cp.transpose(M_112), M_113]])
+        A_11 = lambda_i * B_0 - gamma_i * self.ellipsoid.A
+        A_11 = cp.reshape(A_11, (2, 2))
+        A_12 = gamma_i * self.ellipsoid.a  # + lambda_i * b_0
+        A_12 = cp.reshape(A_12, (2, 1))
+        A_22 = self.tau - gamma_i * self.ellipsoid.c  # + lambda_i * beta_0
+        A_22 = cp.reshape(A_22, (1, 1))
+        A = cp.bmat([[A_11, A_12], [cp.transpose(A_12), A_22]])
         # constructing M_12 and M_21
         M_12 = cp.vstack([self.theta, -1, 0])
         # constructing M_22
         M_22 = 1
         M_22 = np.reshape(M_22, (1, 1))
         # combine into M
-        M = cp.bmat([[M_11, M_12], [cp.transpose(M_12), M_22]])
+        M = cp.bmat([[A, M_12], [cp.transpose(M_12), M_22]])
         # construct the constraints
         return [M >> 0]
 
