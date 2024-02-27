@@ -19,7 +19,7 @@ def experiment1(seed):
     generator = np.random.default_rng(seed)
     n = 20
     slope = 2 * np.ones((2,))
-    # sample uniformly from the unit square
+    # sample uniformly from the unit hypercube
     data = generator.uniform(size=(2, n))
     y = np.array([np.dot(data[:, i], slope) + generator.normal(scale=1) for i in range(n)])
     data = np.vstack((data, y))
@@ -51,14 +51,13 @@ def experiment1(seed):
 
 def experiment2(seed):
     """
-    Experiment 2: For 5d linear regression, plot the realized values of alpha and lambda for illustrative purposes.
     """
     generator = np.random.default_rng(seed)
-    m = 50
+    m = 40
     sigma = 2
     rico = 3
     nb_tries = 50
-    dimensions = [2] #, 3, 4]
+    dimensions = [10, 20, 30]
 
     # outcome: consists of 3-tuples [close to theta_r, close to theta_0, other]
     outcome_array = np.zeros((len(dimensions), 2, 3))
@@ -72,10 +71,10 @@ def experiment2(seed):
         slope = rico * np.ones((d - 1,))
         slope /= np.linalg.norm(slope)
 
-        # support generating data
-        x = MDG.uniform_unit_square(generator, d - 1, 2*m)
-        y = (np.array([np.dot(x[:, i], slope) for i in range(2*m)]) +
-             MDG.normal_disturbance(generator, sigma, 2*m, True))
+        # support generating data uniformly from the unit hypercube
+        x = MDG.uniform_unit_hypercube(generator, d - 1, 2 * m)
+        y = (np.array([np.dot(x[:, i], slope) for i in range(2 * m)]) +
+             MDG.normal_disturbance(generator, sigma, 2 * m, True))
         data = np.vstack([x, y])
         lj_ellipsoid = Ellipsoid.lj_ellipsoid(data)
         sphere = Ellipsoid.smallest_enclosing_sphere(data)
@@ -84,7 +83,7 @@ def experiment2(seed):
 
         # test data
         m_test = 1000
-        x_test = MDG.uniform_unit_square(generator, d - 1, m_test)
+        x_test = MDG.uniform_unit_hypercube(generator, d - 1, m_test)
         y_test = np.array([np.dot(x_test[:, i], slope) for i in range(m_test)]) + \
                  MDG.normal_disturbance(generator, sigma, m_test, True)
         test_data = np.vstack([x_test, y_test])
@@ -92,7 +91,7 @@ def experiment2(seed):
         for i, ellipsoid in enumerate(ellipsoids):
             for j in range(nb_tries):
                 # training data
-                x = MDG.uniform_unit_square(generator, d - 1, m)
+                x = MDG.uniform_unit_hypercube(generator, d - 1, m)
                 y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma, m,
                                                                                                   True)
                 training_data = np.vstack([x, y])
@@ -140,6 +139,7 @@ def experiment2(seed):
             ax.axvline(problem.test_loss(test_data, 'theta_r'), color='r', linestyle='dashed', linewidth=2)
             plt.title(f"Loss histogram for d = {d} ({ellipsoid.type})")
             plt.legend()
+            plt.savefig("thesis_figures/multivariate_ls/hist_loss_d" + str(d) + "_" + ellipsoid.type + ".png")
             plt.show()
             print(f"For d = {d} and ellipsoid type {ellipsoid.type}:")
             print(f"Robust cost: {problem.test_loss(test_data, 'theta_r')}")
@@ -153,12 +153,23 @@ def experiment2(seed):
             plt.scatter(np.ones(nb_tries), lambda_array[k, i, :], marker='.')
             plt.title(f"Lambda values for d = {d} ({ellipsoid.type})")
             plt.ylim(0, 1.1)
+            plt.savefig("thesis_figures/multivariate_ls/lambda_d" + str(d) + "_" + ellipsoid.type + ".png")
             plt.show()
 
             # plot a scatter plot for the realized values of alpha
             plt.figure()
-            plt.scatter(np.ones(nb_tries), alpha_array[k, i, :], marker='.', label=r"$\alpha$")
-            plt.title(f"Realized values of alpha and lambda for d = {d} ({ellipsoid.type})")
+            ind_lambdas_1 = np.where(lambda_array[k, i, :] > 0.9)
+            ind_lambdas_0 = np.where(lambda_array[k, i, :] < 0.1)
+            ind_lambdas_else = np.where((lambda_array[k, i, :] <= 0.9) & (lambda_array[k, i, :] >= 0.1))
+            plt.scatter(np.ones(len(ind_lambdas_1[0])), alpha_array[k, i, ind_lambdas_1],
+                        label=r"$\lambda \approx 1$", color='b')
+            plt.scatter(np.ones(len(ind_lambdas_0[0])), alpha_array[k, i, ind_lambdas_0],
+                        label=r"$\lambda \approx 0$", color='r')
+            plt.scatter(np.ones(len(ind_lambdas_else[0])), alpha_array[k, i, ind_lambdas_else],
+                        label=r"$\lambda$ otherwise", color='g')
+            plt.legend()
+            plt.title(f"Realized values of alpha for d = {d} ({ellipsoid.type})")
+            plt.savefig("thesis_figures/multivariate_ls/alpha_d" + str(d) + "_" + ellipsoid.type + ".png")
             plt.show()
 
     for i, ellipsoid in enumerate(ellipsoids):
@@ -166,7 +177,7 @@ def experiment2(seed):
         outcomes = outcome_array[:, i, :]
         categories = ("collapse", "data", "other")
         data = {categories[j]: outcomes[:, j] for j in range(outcomes.shape[1])}
-        width = 1
+        width = 2
         plt.figure()
         bottom = np.zeros(outcomes.shape[0])
         for label, weight_count in data.items():
@@ -175,6 +186,9 @@ def experiment2(seed):
 
         plt.legend()
         plt.title(f"Outcome for {ellipsoid.type} ellipsoid")
+        plt.xlabel("Dimension")
+        plt.ylabel("Count")
+        plt.savefig("thesis_figures/multivariate_ls/outcome_" + ellipsoid.type + ".png")
         plt.show()
 
     # create timing plot (for LJ)
@@ -187,6 +201,7 @@ def experiment2(seed):
     plt.xlabel("Dimension")
     plt.ylabel("Time (s)")
     plt.legend()
+    plt.savefig("thesis_figures/multivariate_ls/timing_lj.png")
     plt.show()
 
 

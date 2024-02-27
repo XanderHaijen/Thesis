@@ -38,11 +38,21 @@ class CADRO1DLinearRegression(ContinuousCADRO):
             return self._loss_function(self.theta_0[index], self.data)
 
     def set_theta_r(self):
+        """
+        Set theta_r to be the solution of the robust optimization problem.
+        """
         robust_opt = RobustOptimization(self.ellipsoid, solver=self.solver)
         robust_opt.solve_1d_linear_regression()
         self.theta_r = robust_opt.theta
 
     def _find_theta0_batch(self, data_batch_indices: np.ndarray):
+        """
+        Solve the least squares problem using the sample average approach.
+
+        :param data_batch_indices: indices of the data to use for the SAA method
+
+        :return: theta_0 as a float
+        """
         # solve the least squares problem (i.e. the sample average approach)
         theta0 = cp.Variable(1)
         train_data = self.data[:, data_batch_indices]
@@ -52,6 +62,13 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         return theta0.value[0]
 
     def _find_theta_star(self, theta=None):
+        """
+        Solve the least squares problem using the CADRO method.
+
+        :param theta: value for theta. If None, theta is an optimization variable. Default is None.
+
+        :return: None. Values for theta, lambda, tau, and gamma are stored in the object.
+        """
         self.theta = cp.Variable(1) if theta is None else theta
         self.lambda_ = cp.Variable(len(self.theta_0))
         self.tau = cp.Variable(1)
@@ -78,6 +95,13 @@ class CADRO1DLinearRegression(ContinuousCADRO):
             self.theta = self.theta.value[0]
 
     def _lmi_constraint(self, index: int = 0):
+        """
+        Construct the linear matrix inequality (LMI) constraints for the CADRO problem in cvxpy format.
+
+        :param index: index of the theta_0 to use
+
+        :return: a list containing the LMI constraint
+        """
         theta_i = self.theta_0[index]
         lambda_i = self.lambda_[index]
         gamma_i = self.gamma[index]
@@ -101,6 +125,16 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         return [M >> 0]
 
     def test_loss(self, test_data: np.ndarray, type: str = "theta", index: int = 0) -> float:
+        """
+        Compute the loss on the test data. The loss is normalized by the number of data points and is given by
+        1/m * sum_{i=1}^m (y_i - theta * x_i)^2.
+
+        :param test_data: (d, m) matrix containing the test data
+        :param type: type of theta to use. Must be either "theta", "theta_r", or "theta_0". Default is "theta".
+        :param index: index of theta_0 to use. Default is 0. This argument is ignored if type is not "theta_0".
+
+        :return: the loss on the test data as a float
+        """
         if self.theta is None:
             raise ValueError("theta is not set")
         if type not in ("theta", "theta_r", "theta_0"):
@@ -119,6 +153,15 @@ class CADRO1DLinearRegression(ContinuousCADRO):
 
     @staticmethod
     def _loss_function(theta, data, cvxpy=False):
+        """
+        Compute the loss function for the given data and theta.
+
+        :param theta: the value of theta
+        :param data: the data matrix (d x m)
+        :param cvxpy: if True, the function returns a cvxpy expression. Default is False.
+
+        :return: the loss function as a cvxpy expression or a float
+        """
         x = data[0, :]
         y = data[1, :]
         if cvxpy:
@@ -128,13 +171,30 @@ class CADRO1DLinearRegression(ContinuousCADRO):
 
     @staticmethod
     def _scalar_loss(theta, x, y, cvxpy=False):
+        """
+        Compute the loss function for the given single data point (x, y) and theta.
+
+        :param theta: the value of theta
+        :param x: the x value (scalar)
+        :param y: the y value (scalar)
+        :param cvxpy: if True, the function returns a cvxpy expression. Default is False.
+
+        :return: the loss function as a cvxpy expression or a float
+        """
         if cvxpy:
             return cp.power(y - cp.multiply(theta, x), 2)
         else:
             return (y - theta * x) ** 2
 
-    @staticmethod
-    def _loss_matrices(theta, cvxpy=False):
+    def _loss_matrices(self, theta, cvxpy=False):
+        """
+        Compute the matrices B, b, and beta for the loss function.
+
+        :param theta: the value of theta
+        :param cvxpy: if True, the function returns cvxpy expressions. Default is False.
+
+        :return: B, b, beta as numpy arrays or cvxpy expressions
+        """
         if not cvxpy and isinstance(theta, cp.Variable):
             raise ValueError("theta must be a float when cvxpy=False")
 

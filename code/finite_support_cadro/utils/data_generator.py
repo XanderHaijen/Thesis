@@ -64,9 +64,9 @@ class MultivariateDataGenerator(np.random.RandomState):
         pass
 
     @staticmethod
-    def uniform_unit_square(generator: np.random.default_rng, dimension: int, n: int) -> np.ndarray:
+    def uniform_unit_hypercube(generator: np.random.default_rng, dimension: int, n: int) -> np.ndarray:
         """
-        Generates n d-dimensional vectors uniformly distributed on the unit square
+        Generates n d-dimensional vectors uniformly distributed on the d-dimensional unit hypercube [0, 1]^d.
         """
         return generator.uniform(size=(dimension, n))
 

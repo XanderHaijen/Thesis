@@ -4,13 +4,12 @@ from continuous_cadro import ContinuousCADRO
 import numpy as np
 from ellipsoids import Ellipsoid
 import cvxpy as cp
-import study_minimal
 
 
 class LeastSquaresCadro(ContinuousCADRO):
     """
-    CADRO for least squares objective functions:
-    J(theta) = || H theta - h ||_2^2
+    CADRO for least squares objective function:
+    J(theta) = || A theta - b ||_2^2
     """
 
     def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid, split=None):
@@ -108,6 +107,15 @@ class LeastSquaresCadro(ContinuousCADRO):
 
     @staticmethod
     def _scalar_loss(theta, x, y, cvxpy=False) -> float:
+        """
+        This function calculates the loss function for the given theta and a single data point (x, y). The loss function
+        is defined as (x * theta^T - y)^2.
+        :param theta: A (d, 1) vector. This is the parameter for which the loss function is calculated.
+        :param x: A (d, 1) vector. This is the input data point.
+        :param y: A scalar. This is the label for the input data point.
+        :param cvxpy: A boolean value. If True, the function will return a cvxpy expression. Default is False.
+        :return: The loss function calculated for the given theta and data as a scalar.
+        """
         if not cvxpy:
             loss = (np.dot(theta, x) - y) ** 2
             return loss[0, 0]  # reshape to scalar
@@ -115,6 +123,13 @@ class LeastSquaresCadro(ContinuousCADRO):
             return cp.square(cp.matmul(cp.transpose(theta), x) - y)
 
     def _find_theta_star(self, theta=None):
+        """
+        Solve the multivariate least squares problem using the CADRO method.
+
+        :param theta: the value for theta. If None, theta is an optimization variable. Default is None.
+
+        :return: None. All values are stored in the object.
+        """
         self.theta = cp.Variable(shape=(self.data.shape[0] - 1, 1)) if theta is None else theta
         if theta is not None:
             assert theta.shape == (self.data.shape[0] - 1, 1)
@@ -144,6 +159,12 @@ class LeastSquaresCadro(ContinuousCADRO):
             self.theta = self.theta.value[:, 0]
 
     def _lmi_constraint(self, index: int = 0) -> list:
+        """
+        Returns the LMI constraint for the given index in cvxpy format.
+
+        :param index: index of the theta_0 to use
+        :return: a list containing the LMI constraint
+        """
         theta_i = self.theta_0[index]
         lambda_i = self.lambda_[index]
         gamma_i = self.gamma[index]
@@ -158,18 +179,20 @@ class LeastSquaresCadro(ContinuousCADRO):
         M = cp.bmat([[A, theta_vector], [theta_vector.T, cp.reshape(1, (1, 1))]])
         return [M >> 0]
 
-    def test_loss(self, test_data: np.ndarray, type: str) -> float:
+    def test_loss(self, test_data: np.ndarray, type: str = 'theta', index: int = 0) -> float:
         """
         Compute the loss on the test data.
         :param test_data: (d, m) matrix containing the test data
+        :param type: the type of loss to compute. Must be "theta_0", "theta_r" or "theta".
+        :param index: index of the theta_0 to use. Default is 0. This argument is only used when type is "theta_0".
+
         :return: the loss on the test data
         """
         if type not in ['theta_0', 'theta_r', 'theta']:
             raise ValueError('Invalid type argument. Must be "theta_0", "theta_r" or "theta".')
 
         if type == 'theta_0':
-            return self._loss_function(self.theta_0[0], test_data)
-            # TODO implement multiple initial guesses
+            return self._loss_function(self.theta_0[index], test_data)
         elif type == 'theta_r':
             return self._loss_function(self.theta_r, test_data)
         else:
@@ -179,10 +202,15 @@ class LeastSquaresCadro(ContinuousCADRO):
         """
         Return the loss matrices used in the optimization problem. These are the loss matrices
         when the loss is computed for one data point.
+
+        :param theta: the parameter for which the loss matrices are calculated
+        :param cvxpy: a boolean value. If True, the function will return cvxpy expressions. Default is False.
+
+        :return: the loss matrices B, b, and beta as cvxpy expressions or numpy arrays
         """
         if cvxpy:
             theta_ext = cp.vstack([theta, cp.reshape(-1.0, (1, 1))])
             return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0
         else:
-            theta_ext = np.hstack([theta.T, np.array([[-1]])])
+            theta_ext = np.vstack([theta, -1.0])
             return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0
