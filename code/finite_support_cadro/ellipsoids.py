@@ -136,9 +136,10 @@ class Ellipsoid:
         return ellipsoid
 
     @staticmethod
-    def from_principal_axes(R: np.ndarray, data: np.ndarray, theta0: float = None,
+    def from_principal_axes(R: np.ndarray, data: np.ndarray,
                             scaling_factor: Union[float, None] = 1,
-                            plot: bool = False, lengths=None):
+                            plot: bool = False, lengths=None,
+                            solver=cp.MOSEK, verbose=False):
         """
         Compute the smallest possible ellipsoid that contains the given data, given that the principal axes of the
         ellipse are known. The principal axes are given by the matrix R. The ellipse is defined as
@@ -148,7 +149,6 @@ class Ellipsoid:
         principal axis.
         :param data: (d, n) array of points
         :param scaling_factor: scaling factor for the ellipse
-        :param theta0: the approximate slope of the data points defining the ellipse
         :param plot: whether to plot the ellipse along with the data points (only works for 2D data)
         :param lengths: the lengths of the principal axes. If None, the lengths are optimization variables. If lengths
         are given, the lengths are scaled by a factor of scaling_factor, which is the same for all axes.
@@ -167,25 +167,38 @@ class Ellipsoid:
         # the free variables are the lengths of the principal axes if not given, and the center of the ellipse
         d = data.shape[0]
         n = data.shape[1]
+
+        assert R.shape == (d, d)
+
         if lengths is None:
-            lengths = scaling_factor * cp.Variable((d, 1))
+            lengths = cp.Variable((d, ))
         else:
-            lengths = scaling_factor * cp.reshape(lengths, (d, 1))
+            lengths = scaling_factor * cp.reshape(lengths, (d, ))
         center = cp.Variable((d, 1))
 
         # construct the principal axes matrix
-        if isinstance(R, dict):
-            # assert all given vectors are orthogonal
-            tol = 1e-6
-            for i in range(len(R.keys())):
-                for j in range(i + 1, len(R.keys())):
-                    assert np.abs(R[str(i)].T @ R[str(j)]) < tol
+        # if isinstance(R, dict):
+        #     # assert all given vectors are orthogonal
+        #     tol = 1e-6
+        #     for i in list(R.keys()):
+        #         for j in np.setdiff1d(list(R.keys()), i):
+        #             assert np.abs(R[i].T @ R[j]) < tol
 
-            R = cp.hstack([R.get(str(i), cp.Variable((d, 1))) for i in range(d)])
-        # else: R is a numpy array
+            # construct columns of R. If the axis is given, multiply by the length, otherwise, the column is
+            # a vector optimization variable
+            # R_dict_new = {}
+            # for i in range(d):
+            #     if i + 1 in R.keys():
+            #         vector_i = cp.reshape(R[i + 1], (d, 1))
+            #         R_dict_new[i] = lengths[i] * vector_i
+            #         cp.reshape(R_dict_new[i], (d, 1))
+            #     else:
+            #         R_dict_new[i] = cp.Variable((d, 1))
+            # R = cp.hstack([R_dict_new[i] for i in range(d)])
+        # else: R is a numpy array of correct size. No action is needed.
 
         # construct A as each column of R multiplied by the corresponding length
-        A = cp.diag(lengths) @ R.T
+        A = R @ cp.diag(cp.reshape(lengths, (d,)))
         constraints = [A >> 0]
         for i in range(n):
             data_point = data[:, i]
@@ -193,7 +206,8 @@ class Ellipsoid:
             constraints = constraints + [cp.norm(A @ data_point + center) <= 1]
         objective = cp.Minimize(- cp.log_det(A))
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=cp.MOSEK)
+        problem.solve(solver=solver, verbose=verbose)
+
         if problem.status == cp.INFEASIBLE:
             raise ValueError("Problem is infeasible")
         if problem.status == cp.OPTIMAL_INACCURATE:

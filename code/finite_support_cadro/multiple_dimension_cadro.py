@@ -12,13 +12,13 @@ class LeastSquaresCadro(ContinuousCADRO):
     J(theta) = || A theta - b ||_2^2
     """
 
-    def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid, split=None):
+    def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid, solver=cp.MOSEK, split=None, seed=0):
         """
         :param data: (d, m) matrix containing the data
         :param ellipsoid: Ellipsoid object
         :param split: split the data into two parts. If None, the default split is used.
         """
-        super().__init__(data, ellipsoid, split)
+        super().__init__(data, ellipsoid, solver, split, seed)
 
     @property
     def loss(self):

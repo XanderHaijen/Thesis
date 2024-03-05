@@ -37,6 +37,10 @@ class RobustOptimization:
         return self.__ellipsoid
 
     @property
+    def theta_r(self):
+        return self.theta
+
+    @property
     def results(self):
         return {"theta": self.theta, "cost": self.cost, "tau": self.tau, "lambda": self.lambda_,
                 "A": self.ellipsoid.A, "a": self.ellipsoid.a, "c": self.ellipsoid.c}
