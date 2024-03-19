@@ -64,14 +64,13 @@ class Ellipsoid:
             raise ValueError("Scaling factor must be greater than or equal to 1")
         d = data.shape[0]
         n = data.shape[1]
-        A = cp.Variable((d, d))
+        A = cp.Variable((d, d), PSD=True)
         b = cp.Variable((d, 1))
         constraints = []
         for i in range(n):
             data_point = data[:, i]
             data_point = np.reshape(data_point, (d, 1))
             constraints = constraints + [cp.norm(A @ data_point + b) <= 1]
-        constraints = constraints + [A >> 0]
         objective = cp.Minimize(- cp.log_det(A))
         problem = cp.Problem(objective, constraints)
         problem.solve()
@@ -86,7 +85,7 @@ class Ellipsoid:
         b_bar = - A.T @ b
         c_bar = scaling_factor ** 2 - b.T @ b
 
-        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar, center=np.linalg.solve(A, -b), kind="LJ")
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar / scaling_factor ** 2, center=np.linalg.solve(A, -b), kind="LJ")
 
         if plot and d == 2:
             ellipsoid.plot()
@@ -138,7 +137,8 @@ class Ellipsoid:
     @staticmethod
     def from_principal_axes(R: np.ndarray, data: np.ndarray,
                             scaling_factor: Union[float, None] = 1,
-                            plot: bool = False, lengths=None,
+                            plot: bool = False,
+                            max_length: float = None,
                             solver=cp.MOSEK, verbose=False):
         """
         Compute the smallest possible ellipsoid that contains the given data, given that the principal axes of the
@@ -150,19 +150,12 @@ class Ellipsoid:
         :param data: (d, n) array of points
         :param scaling_factor: scaling factor for the ellipse
         :param plot: whether to plot the ellipse along with the data points (only works for 2D data)
-        :param lengths: the lengths of the principal axes. If None, the lengths are optimization variables. If lengths
-        are given, the lengths are scaled by a factor of scaling_factor, which is the same for all axes.
+        :param max_length: maximum length of the principal axes. If given, the lengths of the principal axes are
+        constrained to be less than or equal to max_length.
+        :param solver: the solver to use for the optimization problem (default is MOSEK)
+        :param verbose: whether to print the solver output
         :return: an Ellipsoid object
         """
-        if scaling_factor is not None and scaling_factor < 1:
-            raise ValueError("Scaling factor must be greater than or equal to 1")
-        elif scaling_factor is None:
-            scaling_factor = cp.Variable(1)
-        elif lengths is not None and scaling_factor is not None:
-            raise ValueError("Either lengths or scaling_factor must be None, otherwise the problem is overconstrained.")
-        elif lengths is None and scaling_factor is None:
-            raise ValueError(
-                "Either lengths or scaling_factor must be given, otherwise the problem is non-convex.")
 
         # the free variables are the lengths of the principal axes if not given, and the center of the ellipse
         d = data.shape[0]
@@ -170,36 +163,16 @@ class Ellipsoid:
 
         assert R.shape == (d, d)
 
-        if lengths is None:
-            lengths = cp.Variable((d, ))
-        else:
-            lengths = scaling_factor * cp.reshape(lengths, (d, ))
+        lengths = cp.Variable((d, ))
         center = cp.Variable((d, 1))
 
-        # construct the principal axes matrix
-        # if isinstance(R, dict):
-        #     # assert all given vectors are orthogonal
-        #     tol = 1e-6
-        #     for i in list(R.keys()):
-        #         for j in np.setdiff1d(list(R.keys()), i):
-        #             assert np.abs(R[i].T @ R[j]) < tol
-
-            # construct columns of R. If the axis is given, multiply by the length, otherwise, the column is
-            # a vector optimization variable
-            # R_dict_new = {}
-            # for i in range(d):
-            #     if i + 1 in R.keys():
-            #         vector_i = cp.reshape(R[i + 1], (d, 1))
-            #         R_dict_new[i] = lengths[i] * vector_i
-            #         cp.reshape(R_dict_new[i], (d, 1))
-            #     else:
-            #         R_dict_new[i] = cp.Variable((d, 1))
-            # R = cp.hstack([R_dict_new[i] for i in range(d)])
-        # else: R is a numpy array of correct size. No action is needed.
-
         # construct A as each column of R multiplied by the corresponding length
-        A = R @ cp.diag(cp.reshape(lengths, (d,)))
+        A = R @ cp.diag(cp.reshape(lengths, (d,))) @ R.T
         constraints = [A >> 0]
+        constraints += [lengths[i] >= 0 for i in range(d)]
+        if max_length is not None:
+            constraints += [lengths[i] <= 1/(max_length**2) for i in range(d)]
+
         for i in range(n):
             data_point = data[:, i]
             data_point = np.reshape(data_point, (d, 1))
@@ -213,7 +186,7 @@ class Ellipsoid:
         if problem.status == cp.OPTIMAL_INACCURATE:
             print("WARNING: Problem is optimal but inaccurate")
 
-        A = A.value
+        A = R @ np.diag(lengths.value / scaling_factor) @ R.T
         center = center.value
 
         A_bar = - A.T @ A
@@ -225,7 +198,94 @@ class Ellipsoid:
         if plot and d == 2:
             ellipsoid.plot()
 
+        print("Lengths")
+        print(lengths.value)
+
         return ellipsoid
+
+    @staticmethod
+    def ellipsoid_from_corners(corners: np.ndarray, scaling_factor: float = 1):
+        # d = corners.shape[0]
+        # m = corners.shape[1]
+        # # assert m >= d * (d + 1) / 2 + d
+        # # assert m <= 2 ** d
+        #
+        # # we construct a linear system of equations to solve for the coefficients of the ellipse
+        # # for every data point we have the equation x^T A x + 2 a^T x = 1, where we have chosen c = -1
+        # # we can rewrite this as [x^T x, x, 1] [A, a; a^T, c] [x^T x, x, 1]^T = 0
+        #
+        # C = np.zeros((m, d * (d + 1) // 2 + d))
+        # for i in range(m):
+        #     point = corners[:, i]
+        #     for j in range(i, d):
+        #         C[i, j] = point[i] * point[j] * (2 if i != j else 1)
+        #     C[i, -1] = 1
+        #     C[i, -d-1:-1] = 2 * point
+        #
+        # b = np.ones((d * (d + 1) // 2 + d, 1))
+        # # solve the linear system
+        # print(np.linalg.matrix_rank(C))
+        # x = np.linalg.solve(C, b)
+        #
+        # A = np.zeros((d, d))
+        # # A is symmetric, so we only need to fill the upper triangular part and then copy it to the lower triangular
+        # k = 0
+        # for i in range(d):
+        #     A[i, i:] = x[k:k + d - i]
+        #     k += d - i
+        #
+        # A = A + A.T - np.diag(np.diag(A))
+        #
+        # # a is the next d elements
+        # a = x[d * (d + 1) // 2:]
+        #
+        # # c was chosen to be -1
+        # c = -1.0 * scaling_factor ** 2
+        #
+        # ellipsoid = Ellipsoid(A, a, c, kind="Circumcircle")
+        #
+        # return ellipsoid
+
+        d = corners.shape[0]
+        m = corners.shape[1]
+
+        assert m == 2 ** d
+        # get the center of the data hypercube
+        center = np.mean(corners, axis=1)
+        center = np.reshape(center, (d, 1))
+
+        A = cp.Variable((d, d), PSD=True)
+
+        # construct the constraints
+        constraints = []
+        for i in range(m):
+            point = corners[:, i]
+            point = np.reshape(point, (d, 1))
+            constraints = constraints + [cp.norm(A @ point - center) <= 1]
+
+        # construct the objective
+        objective = cp.Minimize(- cp.log_det(A))
+
+        # solve the problem
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+
+        if problem.status == cp.INFEASIBLE:
+            raise ValueError("Problem is infeasible")
+        if problem.status == cp.OPTIMAL_INACCURATE:
+            print("WARNING: Problem is optimal but inaccurate")
+
+        A = A.value
+        A_bar = - A.T @ A
+        b_bar = A.T @ center
+        # b_bar = np.reshape(b_bar, (d, 1))
+        c_bar = scaling_factor**2 - center.T @ center
+        # c_bar = np.reshape(c_bar, (1, 1))
+
+        ellipsoid = Ellipsoid(A_bar, b_bar, c_bar, shape=-A_bar / scaling_factor**2, center=center, kind="Circumcircle")
+
+        return ellipsoid
+
 
     def normalize(self) -> None:
         """

@@ -3,6 +3,8 @@ from ellipsoids import Ellipsoid
 from one_dimension_cadro import CADRO1DLinearRegression
 from multiple_dimension_cadro import LeastSquaresCadro
 import matplotlib.pyplot as plt
+from utils.data_generator import MultivariateDataGenerator as MDG
+from time import time
 
 
 class ContinuousCADROTester:
@@ -46,36 +48,121 @@ class LeastSquaresTester(ContinuousCADROTester):
         return self.problem.results
 
 
-if __name__ == "__main__":
-    generator = np.random.default_rng(0)
-    d = 2
-    n = 10
-    direction = np.random.uniform(size=(d, ))
+def ellipse_from_corners(corners_x: np.ndarray, theta: np.ndarray,
+                         ub: float, lb: float, scaling_factor: int = 1,
+                         return_corners: bool = False, plot: bool = False):
+    """
+    Create the d-dimensional circumcircle based on the x-corners and the data hyperplane.
+    :param corners_x: the corners of the data hypercube
+    :param theta: the data hyperplane slope
+    :param ub: the upper bound of for the data deviation
+    :param lb: the lower bound for the data deviation
+    :param scaling_factor: the scaling factor for the ellipse
+    :param return_corners: whether to return the corners of the bounding box
+    :param plot: whether to plot the corners of the bounding box (only for d = 2 or d = 3)
+    """
+    d = corners_x.shape[0] + 1
+    m = corners_x.shape[1]
+    # for each corner, get the hyperplane value
+    corners_y = np.array([np.dot(corners_x[:, i], theta) for i in range(corners_x.shape[1])])
+    corners_y_plus = corners_y + ub
+    corners_y_min = corners_y - lb
+    corners = np.zeros((d, 2 * m))
+    corners[:d-1, :m] = corners_x
+    corners[d-1, :m] = corners_y_plus
+    corners[:d-1, m:] = corners_x
+    corners[d-1, m:] = corners_y_min
+
+
+    if plot and d == 2:
+        plt.scatter(corners[:d-1, :m], corners[d-1, :m], label="upper bound")
+        plt.scatter(corners[:d-1, m:], corners[d-1, m:], label="lower bound")
+        plt.legend()
+        plt.show()
+    elif plot and d == 3:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(corners[0, :m], corners[1, :m], corners[2, :m], label="upper bound")
+        ax.scatter(corners[0, m:], corners[1, m:], corners[2, m:], label="lower bound")
+        plt.legend()
+        plt.show()
+
+    # select the 2d^2 corners that are the furthest from the center
+    center = np.max(corners, axis=1) / 2 + np.min(corners, axis=1) / 2
+    distances = np.linalg.norm(corners - center[:, None], axis=0)
+    n = min(2**d, d**2)
+    corners = corners[:, np.argsort(distances)[-n:]]
+    ellipsoid = Ellipsoid.lj_ellipsoid(corners, scaling_factor=scaling_factor)
+
+    # assert that the ellipsoid contains the corners
+    assert np.all(ellipsoid.contains(corners))
+
+    if return_corners:
+        return ellipsoid, corners
+    else:
+        return ellipsoid
+
+def test(d, generator):
+    n = 50
+    sigma = 3
+    b = 10
+    direction = np.ones(d, )
     # direction /= np.linalg.norm(direction)
     # sample uniformly on the unit square
-    data = generator.uniform(size=(d, n))
+    data = b * generator.uniform(size=(d, n))
     # values for y are <x, direction> + noise
-    y = np.array([np.dot(data[:, i], direction) + generator.beta(1, 2) for i in range(n)])
+    y = (np.array([np.dot(data[:, i], direction) for i in range(n)]) +
+         np.clip(generator.normal(scale=sigma, size=(1, n)), -3 * sigma, 3 * sigma))
     data = np.vstack((data, y))
-    ellipse = Ellipsoid.lj_ellipsoid(data)
-    # # make 3d plot for the data
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # ax.scatter(data[0, :], data[1, :], data[2, :])
-    # # draw the direction plane
-    # x = np.linspace(0, 1, 10)
-    # y = np.linspace(0, 1, 10)
-    # X, Y = np.meshgrid(x, y)
-    # Z = np.zeros(X.shape)
-    # plt.xlabel("x")
-    # plt.ylabel("y")
-    # plt.title("Data")
-    # for i in range(X.shape[0]):
-    #     for j in range(X.shape[1]):
-    #         Z[i, j] = np.dot(np.array([X[i, j], Y[i, j]]), direction)
-    # # ax.plot_surface(X, Y, Z, alpha=0.2, color='r')
-    # # plt.show()
+
+    # create an array with all the corners of the d - dimensional hypercube
+    M = min(2**d, 1e6)  # maximum number of corners
+    corners_x = np.zeros((int(M), d))
+    k = 0
+    for i in range(2 ** d):
+        new_corner = np.zeros((d, ))
+        for j in range(d):
+            if i & (1 << j):
+                new_corner[j] = b
+            else:
+                new_corner[j] = 0
+        # add the corner with probability 1/2^d
+        if M < 2**d and generator.uniform() <= M / 2**d:
+            corners_x[k, :] = new_corner
+            k += 1
+        elif M >= 2**d:
+            corners_x[k, :] = new_corner
+            k += 1
+    corners_x = corners_x[:k, :]
+
+    ellipsoid, corners = ellipse_from_corners(corners_x.T, direction, ub=3 * sigma, lb=3 * sigma,
+                                              return_corners=True)
+    MDG.contain_in_ellipsoid(generator, data, ellipsoid, direction, (0, b))
+    if d == 1:
+        plt.scatter(data[0, :], data[1, :])
+        # plot the corners of the hypercube and connect them
+        plt.scatter(corners[0, :], corners[1, :], label="corners")
+        plt.plot(corners[0, :2], corners[1, :2], label="upper bound")
+        plt.plot(corners[0, 2:], corners[1, 2:], label="lower bound")
+        plt.legend()
+        # plot the ellipse
+        ellipsoid.plot()
+        plt.axis('equal')
+        plt.show()
 
     # test LeastSquaresCadro
-    tester = LeastSquaresTester(data, ellipse, nb_theta0=1)
+    tester = LeastSquaresTester(data, ellipsoid, nb_theta0=1)
     results = tester.run()
+
+if __name__ == "__main__":
+    generator = np.random.default_rng(0)
+    timings = []
+    dimenions = list(range(5, 31, 5))
+    for d in dimenions:
+        t1 = time()
+        test(d, generator)
+        t2 = time()
+        timings.append(t2 - t1)
+        print(f"dimension {d} took {round(t2 - t1, 3)} seconds")
+    plt.plot(dimenions, timings)
+    plt.show()

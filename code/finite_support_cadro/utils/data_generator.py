@@ -95,10 +95,12 @@ class MultivariateDataGenerator(np.random.RandomState):
         """
         d, n = data.shape
         for i in range(n):
+            disturbance = generator.normal(scale=1)
             while not ellipsoid.contains(data[:, i]):
                 # re-sample the point from the range of x (range is a hypercube with lengths x_range)
-                data[:-1, i] = np.array([generator.uniform(x_range[0], x_range[1]) for _ in range(d - 1)])
-                data[-1, i] = np.dot(data[:-1, i], slope) + generator.normal(scale=1)
+                data[:-1, i] = generator.uniform(x_range[0], x_range[1], size=d-1)
+                data[-1, i] = np.dot(data[:-1, i], slope) + disturbance
+                disturbance /= 2
 
 
 
