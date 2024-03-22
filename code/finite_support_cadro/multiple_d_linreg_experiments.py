@@ -60,8 +60,8 @@ def experiment2(seed):
     """
     plt.rcParams.update({'font.size': 8})
     generator = np.random.default_rng(seed)
-    dimensions = [2, 5, 10, 15]
-    a, b = 0, 5  # side lengths of the hypercube
+    dimensions = [2, 5] #, 10, 15, 20, 25, 30]
+    a, b = 0, 20  # side lengths of the hypercube
     assert b > a
 
     for n_d, d in enumerate(dimensions):
@@ -72,10 +72,15 @@ def experiment2(seed):
         # get the corners of the hypercube [a, b]^(d-1)
         corners_x = aux.hypercube_corners(a, b, d - 1, 1e6, generator)
 
+
         print(f"{datetime.now()} - Dimension {d} - Ellipsoid construction")
-        emp_slope = slope + np.clip(generator.normal(scale=0.1, size=(d - 1,)), -0.2, 0.2)  # random disturbance
-        lj = aux.ellipse_from_corners(corners_x.T, theta=emp_slope, ub=8, lb=8, kind="lj")
-        ses = aux.ellipse_from_corners(corners_x.T, theta=emp_slope, ub=8, lb=8, kind="ses")
+        emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
+        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+                                            scaling_factor=1.05)
+        lj.type = "LJ"
+        ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), (a - b) / 2, (b - a) / 2,
+                                             theta=emp_slope, scaling_factor=1.05)
+        ses.type = "SES"
 
         # conduct experiments for Löwner-John ellipsoid
         print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
@@ -100,32 +105,32 @@ def experiment2(seed):
             f.write(f"Robust cost: {loss_r}")
 
         # conduct experiments for smallest enclosing sphere
-        print(f"{datetime.now()} - Dimension {d}, SES ellipsoid")
-        alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
-
-        # write the dataframe to a text file as latex tables and to an Excel file
-        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.xlsx") as writer:
-            alpha_data.to_excel(writer, sheet_name='alpha')
-            loss_0_data.to_excel(writer, sheet_name='loss_0')
-            loss_star_data.to_excel(writer, sheet_name='loss_star')
-
-        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.txt", "w") as f:
-            f.write("Alpha data \n")
-            f.write(alpha_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write("Loss 0 data \n")
-            f.write(loss_0_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write("Loss star data \n")
-            f.write(loss_star_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write(f"Robust cost: {loss_r}")
+        # print(f"{datetime.now()} - Dimension {d}, SES ellipsoid")
+        # alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
+        #
+        # # write the dataframe to a text file as latex tables and to an Excel file
+        # with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.xlsx") as writer:
+        #     alpha_data.to_excel(writer, sheet_name='alpha')
+        #     loss_0_data.to_excel(writer, sheet_name='loss_0')
+        #     loss_star_data.to_excel(writer, sheet_name='loss_star')
+        #
+        # with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.txt", "w") as f:
+        #     f.write("Alpha data \n")
+        #     f.write(alpha_data.to_latex(float_format="%.0f"))
+        #     f.write("\n")
+        #     f.write("Loss 0 data \n")
+        #     f.write(loss_0_data.to_latex(float_format="%.0f"))
+        #     f.write("\n")
+        #     f.write("Loss star data \n")
+        #     f.write(loss_star_data.to_latex(float_format="%.0f"))
+        #     f.write("\n")
+        #     f.write(f"Robust cost: {loss_r}")
 
 
 def experiment2_loop(dimension, ellipsoid, generator, slope, a, b):
     # general setup
-    data_size = lambda d: [2 * d, 4 * d, 6 * d, 8 * d]
-    sigmas = [0.5, 1, 2, 3]
+    data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 25 * d]
+    sigmas = [0.2, 0.5, 1, 2]
     nb_tries = 100
 
     alpha_array = np.zeros((len(data_size(dimension)), len(sigmas), nb_tries))
@@ -319,7 +324,7 @@ def experiment3a(seed):
     lj.plot(color='r', label="LJ")
     # plot a line along the actual slope
 
-    angles = np.linspace(np.deg2rad(5), np.deg2rad(50), 10)
+    angles = - np.linspace(np.deg2rad(5), np.deg2rad(50), 10)
     colors = plt.cm.viridis(np.linspace(0, 1, len(angles)))
     ellipsoids = [lj]
 

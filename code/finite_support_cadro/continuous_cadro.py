@@ -223,7 +223,7 @@ class ContinuousCADRO:
         alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
         self.alpha[index] = alpha
 
-    def _eta_bar(self, index: int = 0):
+    def _eta_bar(self, index: int = 0, safety: int = 100):
         """
         Calculate eta_bar for the given index. Eta_bar is the worst case loss for the given theta_0.
         :param index: index of theta_0 to use
@@ -242,8 +242,15 @@ class ContinuousCADRO:
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=self.solver)
         if problem.status == cp.INFEASIBLE:
-            raise ValueError("eta_bar is infeasible for index " + str(index))
-        return _tau.value[0]
+            print("Infeasible problem for eta_bar. Using sample-based approach.")
+            # construct the loss for all points in training and calibration data
+            loss = np.array([self._scalar_loss(self.theta_0[index], self.data[0, i], self.data[1:, i])
+                             for i in range(self.data.shape[1])])
+            eta_bar = safety * np.max(loss)
+            return eta_bar
+        else:
+            eta_bar = _tau.value[0]
+            return eta_bar
 
     def reset(self):
         """

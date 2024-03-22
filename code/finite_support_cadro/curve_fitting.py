@@ -19,8 +19,8 @@ def f(x):
     # rational function
     # return 1 / (1 + 25 * x ** 2)
     # exponentials
-    return 5 * np.exp(-x)
-    # return np.exp(-x ** 2) + 0.5 * np.exp(-x ** 4)
+    # return 5 * np.exp(-x)
+    return np.exp(-x ** 2) + 0.5 * np.exp(-x ** 4)
 
 
 def ls_matrix(x, y, basis_functions: List[Callable[[float], float]]):
@@ -61,15 +61,16 @@ def evaluate(theta, basis_functions, points):
 
 if __name__ == "__main__":
     seed = 0
-    m = 50
-    sigma = 0.1
+    m = 25
+    sigma = 0.2
     a, b = 0, 1
-    f_min, f_max = 0, 5
+    f_min, f_max = -2, 3
     assert f_min < f_max
 
     # training_data
+    # x is the Chebysev nodes on the interval [a, b]
     generator = np.random.default_rng(seed)
-    x = np.linspace(a, b, m)
+    x = (a + b) / 2 + (b - a) / 2 * np.cos((2 * np.arange(1, m + 1) - 1) * np.pi / (2 * m))
     y = f(x) + sigma * generator.standard_normal(len(x))
     y = np.clip(y, f_min, f_max)
 
@@ -148,9 +149,9 @@ if __name__ == "__main__":
     plt.figure()
     plt.scatter(x, y, label="data", marker=".")
     plt.plot(points, curve_star, label=r"$\theta^*$")
-    plt.plot(points, curve_r, label=r"$\theta_r$", linestyle="--")
+    # plt.plot(points, curve_r, label=r"$\theta_r$", linestyle="--")
     plt.plot(points, curve_0, label=r"$\theta_0$", linestyle="--")
-    plt.plot(points, actual_curve, label="actual", linestyle="--")
+    # plt.plot(points, actual_curve, label="actual", linestyle="--")
     plt.legend()
     plt.show()
 

@@ -204,50 +204,14 @@ class Ellipsoid:
         return ellipsoid
 
     @staticmethod
-    def ellipsoid_from_corners(corners: np.ndarray, scaling_factor: float = 1):
-        # d = corners.shape[0]
-        # m = corners.shape[1]
-        # # assert m >= d * (d + 1) / 2 + d
-        # # assert m <= 2 ** d
-        #
-        # # we construct a linear system of equations to solve for the coefficients of the ellipse
-        # # for every data point we have the equation x^T A x + 2 a^T x = 1, where we have chosen c = -1
-        # # we can rewrite this as [x^T x, x, 1] [A, a; a^T, c] [x^T x, x, 1]^T = 0
-        #
-        # C = np.zeros((m, d * (d + 1) // 2 + d))
-        # for i in range(m):
-        #     point = corners[:, i]
-        #     for j in range(i, d):
-        #         C[i, j] = point[i] * point[j] * (2 if i != j else 1)
-        #     C[i, -1] = 1
-        #     C[i, -d-1:-1] = 2 * point
-        #
-        # b = np.ones((d * (d + 1) // 2 + d, 1))
-        # # solve the linear system
-        # print(np.linalg.matrix_rank(C))
-        # x = np.linalg.solve(C, b)
-        #
-        # A = np.zeros((d, d))
-        # # A is symmetric, so we only need to fill the upper triangular part and then copy it to the lower triangular
-        # k = 0
-        # for i in range(d):
-        #     A[i, i:] = x[k:k + d - i]
-        #     k += d - i
-        #
-        # A = A + A.T - np.diag(np.diag(A))
-        #
-        # # a is the next d elements
-        # a = x[d * (d + 1) // 2:]
-        #
-        # # c was chosen to be -1
-        # c = -1.0 * scaling_factor ** 2
-        #
-        # ellipsoid = Ellipsoid(A, a, c, kind="Circumcircle")
-        #
-        # return ellipsoid
+    def lj_from_corners(corners: np.ndarray, scaling_factor: float = 1):
 
         d = corners.shape[0]
         m = corners.shape[1]
+
+        if d > 20:
+            print("WARNING: The number of dimensions is greater than 20. This may take a long time. Consider"
+                  "using the 'ellipsoid_from_corners' function instead.")
 
         assert m == 2 ** d
         # get the center of the data hypercube
@@ -286,33 +250,69 @@ class Ellipsoid:
 
         return ellipsoid
 
+    @staticmethod
+    def ellipse_from_corners(lbx: np.ndarray, ubx: np.ndarray,
+                             lbw: float, ubw: float,
+                             theta: np.ndarray, scaling_factor: float = 1):
+        """
+        Analytically compute the ellipsoid that contains the given hyperrectangle. We assume the following problem
+        - x is a (d-1)-dimensional vector bounded by lbx and ubx
+        - y is a scalar variable that can be written as x^T theta + w, where w is bounded by lbw and ubw
+        - theta is a (d-1)-dimensional vector
+
+        The problem is to find the ellipsoid that contains the set of points (x, y) that satisfy the given constraints.
+
+        :param lbx: lower bounds for x
+        :param ubx: upper bounds for x
+        :param lbw: lower bounds for w
+        :param ubw: upper bounds for w
+        :param theta: the vector theta (i.e. the slope of the line or hyperplane)
+
+        :return: an Ellipsoid object
+        """
+        d = len(lbx) + 1
+        assert np.shape(ubx) == (d-1, )
+        assert np.shape(lbx) == (d-1, )
+        assert isinstance(lbw, (int, float))
+        assert isinstance(ubw, (int, float))
+        assert np.shape(theta) == (d-1, )
+        assert scaling_factor >= 1, "Scaling factor must be greater than or equal to 1"
+
+        # construct the inverse matrix A
+        Delta_x = np.diag(ubx - lbx) / 2.0
+        inv_Delta_x = np.diag(2.0 / (ubx - lbx))
+        Delta_w = np.reshape(ubw - lbw, (1, )) / 2.0
+        mu_x = np.reshape((ubx + lbx) / 2, (d-1, 1))
+        mu_w = np.reshape((ubw + lbw) / 2, (1, ))
+        # element-wise multiplication of theta and delta_x
+        A12 = np.reshape(theta.T, (1, d-1))
+        A = np.bmat([[Delta_x, np.zeros((d-1, 1))],
+                     [A12, np.reshape(Delta_w, (1, 1))]])
+        inv_A = np.bmat([[inv_Delta_x, np.zeros((d-1, 1))],
+                         [-(1 / Delta_w) * A12, np.reshape(1 / Delta_w, (1, 1))]])
+        inv_A = np.array(inv_A)  # convert matrix object to numpy array
+        b2 = np.dot(theta, mu_x) + mu_w
+        b = np.vstack((mu_x, b2))
+
+        shape = inv_A.T @ inv_A / d
+        center = b
+
+        A_ellipse = - shape
+        a_ellipse = np.reshape(shape @ b, (d, 1))
+        c_ellipse = np.reshape(scaling_factor ** 2 - center.T @ shape @ center, (1, 1))
+
+        ellipsoid = Ellipsoid(A_ellipse, a_ellipse, c_ellipse, shape=shape / scaling_factor**2,
+                              center=center, kind="Circumcircle")
+
+        return ellipsoid
 
     def normalize(self) -> None:
         """
-        Normalize A, a, and c by dividing by the 2-norm of A
+        Normalize A, a, and c by dividing by c
         """
-        norm_factor = np.linalg.norm(self.A, ord=2)
-        self.A = self.A / norm_factor
-        self.a = self.a / norm_factor
-        self.c = self.c / norm_factor
-
-    # def plot(self, theta_0:float = 0, ax=None, color='r'):
-    #     assert self.A.shape == (2, 2)
-    #     if ax is None:
-    #         ax = plt.gca()
-    #     if self.circle:
-    #         center = self.a
-    #         radius = np.sqrt(self.c + self.a.T @ self.a)
-    #         circle = plt.Circle((center[0].value, center[1].value), radius, color=color, fill=False)
-    #         ax.add_patch(circle)
-    #         ax.set_aspect('equal')
-    #         plt.xlim(center[0].value - 1.25 * radius, center[0].value + 1.25 * radius)
-    #         plt.ylim(center[1].value - 1.25 * radius, center[1].value + 1.25 * radius)
-    #     else:
-    #         self._plot_ellipse_from_matrices(self.A, self.a, self.c, theta0=1 / 4,
-    #                                    x_max=10, x_min=-10,
-    #                                    y_max=10, y_min=-10,
-    #                                    n=200, padding=4, color=color)
+        self.A = self.A / self.c
+        self.a = self.a / self.c
+        self.c = 1
 
     def plot(self, ax=None, **style):
         """Plot an Ellipsoid set in 2D or 3D."""
@@ -324,7 +324,11 @@ class Ellipsoid:
     def _plot_ellipse2d(self, ax=None, **style):
         from matplotlib.patches import Ellipse
         ax = plt.gca() if ax is None else ax
-        eigval, eigvec = np.linalg.eigh(self.shape)
+        eigval, eigvec = np.linalg.eig(self.shape)
+        # sort the eigenvalues and eigenvectors in ascending order
+        idx = eigval.argsort()
+        eigval = eigval[idx]
+        eigvec = eigvec[:, idx]
         angle = np.arctan2(*np.flip(eigvec[0, :])) / np.pi * 180.
         lenx = 2. / np.sqrt(eigval[0])
         leny = 2. / np.sqrt(eigval[1])
@@ -336,98 +340,6 @@ class Ellipsoid:
 
     def _plot_ellipse3d(self, ax=None, **style):
         raise NotImplementedError("3D plotting not implemented yet.")
-
-    @staticmethod
-    def _plot_ellipse_from_matrices(A, a, c, theta0: float, x_max, x_min, y_max, y_min,
-                                    n, padding, equal_axis: bool = True, color='r'):
-        """
-        Plot the ellipse defined by the matrices A, a, c. The ellipse is defined as
-        {x | x^T A x + 2 a^T x + c => 0}. The ellipse is implicitly constructed by iteratively extending the ellipse
-        in the left and right direction along the x-axis by solving the ellipse equation for the y-coordinate.
-        This function does not invoke the plt.show() or plt.figure() command.
-        :param A: (2, 2) matrix
-        :param a: (2, 1) vector
-        :param c: (1, 1) scalar
-        :param theta0: the approximate slope of the data points defining the ellipse
-        :param n: The range (x_min, x_max) is divided equidistantly into n points
-        :param padding: padding for the y-axis. This is the maximum distance between the data points and the ellipse that
-        is plotted.
-        :param equal_axis: whether to use equal axis
-        """
-
-        # TODO replace this with a more efficient algorithm (rcracers.utils.geometry.plot_ellipsoid)
-        def ellipse(A, a, c, x, y):
-            xy = np.array([[x], [y]])
-            return xy.T @ A @ xy + 2 * a.T @ xy + c
-
-        x_range = np.linspace(x_min, x_max, n)
-
-        # first compute the upper half of the ellipse between x_min and x_max
-        xs_upper = []
-        ys_upper = []
-        for x in x_range:
-            try:
-                y_window = (theta0 * x, y_max + padding)
-                y = brentq(lambda y: ellipse(A, a, c, x, y), *y_window, xtol=1e-6)
-                xs_upper.append(x)
-                ys_upper.append(y)
-            except ValueError:
-                pass
-
-        # then compute the lower half of the ellipse
-        xs_lower = []
-        ys_lower = []
-        for x in x_range:
-            try:
-                y_window = (y_min - padding, theta0 * x)
-                y = brentq(lambda y: ellipse(A, a, c, x, y), *y_window, xtol=1e-6)
-                xs_lower.append(x)
-                ys_lower.append(y)
-            except ValueError:
-                pass
-
-        step = (x_max - x_min) / n
-        while True:
-            # keep extending the ellipse in the left direction until we reach a ValueError
-            x_min = x_min - step
-            x_max = x_max + step
-            fail = 0
-            try:
-                # for x_min: both halves
-                y_window_up = (theta0 * x_min, y_max + padding)
-                y_window_low = (y_min - padding, theta0 * x_min)
-                y_up = brentq(lambda y: ellipse(A, a, c, x_min, y), *y_window_up, xtol=1e-6)
-                y_low = brentq(lambda y: ellipse(A, a, c, x_min, y), *y_window_low, xtol=1e-6)
-                xs_upper.insert(0, x_min)
-                ys_upper.insert(0, y_up)
-                xs_lower.insert(0, x_min)
-                ys_lower.insert(0, y_low)
-            except ValueError:
-                fail += 1
-
-            try:
-                # for x_max: both halves
-                y_window_up = (theta0 * x_max, y_max + padding ** 2)
-                y_window_low = (y_min - padding ** 2, theta0 * x_max)
-                y_up = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_up, xtol=1e-6)
-                y_low = brentq(lambda y: ellipse(A, a, c, x_max, y), *y_window_low, xtol=1e-6)
-                xs_upper.append(x_max)
-                ys_upper.append(y_up)
-                xs_lower.append(x_max)
-                ys_lower.append(y_low)
-            except ValueError:
-                fail += 1
-
-            if fail == 2:
-                break
-
-        if equal_axis:
-            plt.axis('equal')
-        plt.plot(xs_lower, ys_lower, color=color)
-        plt.plot(xs_upper, ys_upper, color=color)
-        # connect the two halves
-        plt.plot([xs_lower[-1], xs_upper[-1]], [ys_lower[-1], ys_upper[-1]], color='r', linestyle='--')
-        plt.plot([xs_lower[0], xs_upper[0]], [ys_lower[0], ys_upper[0]], color='r', linestyle='--')
 
 
 class EllipsoidTests:
