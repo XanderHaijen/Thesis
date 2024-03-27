@@ -60,61 +60,41 @@ def experiment2(seed):
     """
     plt.rcParams.update({'font.size': 8})
     generator = np.random.default_rng(seed)
-    dimensions = [2, 5] #, 10, 15, 20, 25, 30]
-    a, b = 0, 20  # side lengths of the hypercube
+    dimensions = [2, 5, 10, 15, 20, 25, 30]
+    a, b = 0, 10  # side lengths of the hypercube
     assert b > a
 
     for n_d, d in enumerate(dimensions):
         slope = [i + 1 for i in range(d - 1)]
 
         # we generate the bounding ellipses based on a bounding box around the data which we calculate a priori
-
-        # get the corners of the hypercube [a, b]^(d-1)
-        corners_x = aux.hypercube_corners(a, b, d - 1, 1e6, generator)
-
-
         print(f"{datetime.now()} - Dimension {d} - Ellipsoid construction")
         emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
-        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
-                                            scaling_factor=1.05)
-        lj.type = "LJ"
-        ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), (a - b) / 2, (b - a) / 2,
+        # lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+        #                                     scaling_factor=1.05)
+        # lj.type = "LJ"
+        #
+        delta_w = (b - a) / 2
+        ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
         ses.type = "SES"
 
+        # r = np.dot(slope, b * np.ones((d - 1,))) + 4
+        # ses = Ellipsoid.ellipse_from_corners(-r * np.ones((d - 1,)), r * np.ones((d - 1,)), -r, r, theta=np.zeros((d - 1,)),
+        #                                      scaling_factor=1.05)
+        # ses.type = "SCC"  # smallest circumscribed cube
+
         # conduct experiments for Löwner-John ellipsoid
-        print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
-        alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, lj, generator, slope, a, b)
-
-        # write the dataframe to a text file as latex tables and to an Excel file
-        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.xlsx") as writer:
-            alpha_data.to_excel(writer, sheet_name='alpha')
-            loss_0_data.to_excel(writer, sheet_name='loss_0')
-            loss_star_data.to_excel(writer, sheet_name='loss_star')
-
-        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.txt", "w") as f:
-            f.write("Alpha data \n")
-            f.write(alpha_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write("Loss 0 data \n")
-            f.write(loss_0_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write("Loss star data \n")
-            f.write(loss_star_data.to_latex(float_format="%.0f"))
-            f.write("\n")
-            f.write(f"Robust cost: {loss_r}")
-
-        # conduct experiments for smallest enclosing sphere
-        # print(f"{datetime.now()} - Dimension {d}, SES ellipsoid")
-        # alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
+        # print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
+        # alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, lj, generator, slope, a, b)
         #
         # # write the dataframe to a text file as latex tables and to an Excel file
-        # with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.xlsx") as writer:
+        # with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.xlsx") as writer:
         #     alpha_data.to_excel(writer, sheet_name='alpha')
         #     loss_0_data.to_excel(writer, sheet_name='loss_0')
         #     loss_star_data.to_excel(writer, sheet_name='loss_star')
         #
-        # with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.txt", "w") as f:
+        # with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.txt", "w") as f:
         #     f.write("Alpha data \n")
         #     f.write(alpha_data.to_latex(float_format="%.0f"))
         #     f.write("\n")
@@ -125,6 +105,28 @@ def experiment2(seed):
         #     f.write(loss_star_data.to_latex(float_format="%.0f"))
         #     f.write("\n")
         #     f.write(f"Robust cost: {loss_r}")
+
+        # conduct experiments for smallest enclosing sphere
+        print(f"{datetime.now()} - Dimension {d}, SES ellipsoid")
+        alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
+
+        # write the dataframe to a text file as latex tables and to an Excel file
+        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.xlsx") as writer:
+            alpha_data.to_excel(writer, sheet_name='alpha')
+            loss_0_data.to_excel(writer, sheet_name='loss_0')
+            loss_star_data.to_excel(writer, sheet_name='loss_star')
+
+        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.txt", "w") as f:
+            f.write("Alpha data \n")
+            f.write(alpha_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write("Loss 0 data \n")
+            f.write(loss_0_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write("Loss star data \n")
+            f.write(loss_star_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write(f"Robust cost: {loss_r}")
 
 
 def experiment2_loop(dimension, ellipsoid, generator, slope, a, b):
@@ -518,22 +520,30 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [5, 10, 15]
-    a, b = 0, 5
+    dimensions = [2, 5, 10, 15]
+    a, b = 0, 10
     assert b > a
     generator = np.random.default_rng(seed)
     nb_tries = 100
 
-    data_size = lambda d: [2 * d, 3 * d, 4 * d, 5 * d, 9 * d, 14 * d]
-
-    sigmas = [0.5, 1, 2]
+    data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
+    sigmas = [0.2, 0.5, 1, 2]
 
     for n_d, d in enumerate(dimensions):
         ms = data_size(d)
         slope = np.ones((d - 1,))
-        corners_x = aux.hypercube_corners(a, b, d - 1, 1e6, generator)
-        lj = aux.ellipse_from_corners(corners_x.T, theta=slope, ub=6, lb=6, kind="lj")
-        ses = aux.ellipse_from_corners(corners_x.T, theta=slope, ub=6, lb=6, kind="ses")
+
+        print(f"{datetime.now()} - Dimension {d} - Ellipsoid construction")
+        emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
+        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+                                            scaling_factor=1.05)
+        lj.type = "LJ"
+
+        delta_w = (b - a) / 2
+        ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
+                                             theta=emp_slope, scaling_factor=1.05)
+        ses.type = "SES"
+
         ellipsoids = [lj, ses]
 
         for ellipsoid in ellipsoids:
@@ -554,6 +564,7 @@ def experiment5(seed):
             cost_r = robust_opt.cost
 
             for i, m in enumerate(ms):
+                print(f"{datetime.now()} - m = {m}")
                 for j, sigma in enumerate(sigmas):
                     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
                     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \

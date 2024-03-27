@@ -302,7 +302,29 @@ class Ellipsoid:
         c_ellipse = np.reshape(scaling_factor ** 2 - center.T @ shape @ center, (1, 1))
 
         ellipsoid = Ellipsoid(A_ellipse, a_ellipse, c_ellipse, shape=shape / scaling_factor**2,
-                              center=center, kind="Circumcircle")
+                              center=center, kind="LJ")
+
+        return ellipsoid
+
+    @staticmethod
+    def sphere_from_parameters(center, radius, scaling_factor=1):
+        """
+        Compute the sphere with center and radius.
+        :param center: center of the sphere
+        :param radius: radius of the sphere
+        :param scaling_factor: scaling factor for the sphere
+        :return: an Ellipsoid object
+        """
+        d = len(center)
+
+        A = - np.eye(d)
+        a = np.reshape(center, (d, 1))
+        c = - center.T @ center + d * radius ** 2 * scaling_factor ** 2
+
+        shape = np.eye(d) / (d * radius ** 2 * scaling_factor ** 2)
+        center = center
+
+        ellipsoid = Ellipsoid(A, a, c, shape=shape, center=center, kind="SES")
 
         return ellipsoid
 

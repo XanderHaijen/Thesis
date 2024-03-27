@@ -1,5 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+
+# add parent directory to path
+sys.path.append('..')
+
 from finite_support_cadro.ellipsoids import Ellipsoid
 
 def plot_alphas(gca, alpha_array, lambda_array, loss_r, title=None, boxplot=False, scale='linear', marker='.'):

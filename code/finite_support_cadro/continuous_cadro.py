@@ -240,8 +240,13 @@ class ContinuousCADRO:
         constraints = [M >> 0, _lambda >= 0]
         objective = cp.Minimize(_tau)
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=self.solver)
-        if problem.status == cp.INFEASIBLE:
+        infeasible = False
+        try:
+            problem.solve(solver=self.solver)
+        except cp.error.SolverError:
+            infeasible = True
+
+        if problem.status == cp.INFEASIBLE or infeasible:
             print("Infeasible problem for eta_bar. Using sample-based approach.")
             # construct the loss for all points in training and calibration data
             loss = np.array([self._scalar_loss(self.theta_0[index], self.data[0, i], self.data[1:, i])
