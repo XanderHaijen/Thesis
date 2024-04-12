@@ -1,7 +1,6 @@
 import numpy as np
 import cvxpy as cp
 from ellipsoids import Ellipsoid
-from utils.multivariate_experiments import hypercube_corners, ellipse_from_corners
 
 
 class MomentDRO:
@@ -10,9 +9,10 @@ class MomentDRO:
     regression. The algorithm is used to find the optimal distribution that minimizes the worst-case expected loss
     under the first and second moments of the distribution. The algorithm is based on the concept of support ellipsoid
     and the R_hat value. The algorithm is based on the following paper:
-    - Delage, E., & Ye, Y. (2010). Distributionally robust optimization under moment uncertainty with application to
-      data-driven problems. Operations Research, 58(3), 595-612.
+    Delage, E., & Ye, Y. (2010). Distributionally Robust Optimization Under Moment Uncertainty with Application to
+    Data-Driven Problems. Operations Research, 58(3), 595-612. https://doi.org/10.1287/opre.1090.0741
     """
+
     def __init__(self, ellipsoid: Ellipsoid, data: np.ndarray, confidence: float,
                  solver: str = "MOSEK"):
         """
@@ -29,8 +29,7 @@ class MomentDRO:
         self._get_moments()
 
         self.Rhat = None  # set by calling R_hat
-        self.theta = None # set by calling solve
-
+        self.theta = None  # set by calling solve
 
     @property
     def mu0(self):
@@ -47,7 +46,7 @@ class MomentDRO:
         :return: mu0, sigma0 as np arrays
         """
         mu0 = np.mean(self.data, axis=1)
-        sigma0 = np.cov(self.data, rowvar=True)
+        sigma0 = np.cov(self.data, rowvar=True, bias=True)
 
         return mu0, sigma0
 
@@ -61,8 +60,8 @@ class MomentDRO:
         mu0, sigma0 = self._get_moments()
         tau = cp.Variable()
         _lambda = cp.Variable()
-        inv_sigma0 = np.linalg.inv(sigma0)
-        inv_sigma0 = 0.5 * (inv_sigma0 + inv_sigma0.T) # make sure it is symmetric
+        inv_sigma0 = np.linalg.solve(sigma0, np.eye(self.d))
+        inv_sigma0 = 0.5 * (inv_sigma0 + inv_sigma0.T)  # make sure it is symmetric
         B = - inv_sigma0
         b = cp.reshape(inv_sigma0 @ mu0, (self.d, 1))
         beta = - mu0.T @ inv_sigma0 @ mu0 + tau
@@ -78,25 +77,25 @@ class MomentDRO:
         if prob.status != "optimal":
             raise ValueError(f"Problem status: {prob.status}")
 
-        self.Rhat = np.sqrt(tau.value)
+        self.Rhat = np.sqrt(prob.value)
 
     def assert_m(self) -> float:
         """
-        Assert that the data size is large enough. This checks the condition given by Delage and Ye (2010), Eq. (13)
+        Assert that the data size is large enough. This checks the condition given by Delage and Ye (2010)
         """
         assert self.Rhat is not None, "R_hat is not set. Call R_hat() first."
-        delta_1 = 1 - np.sqrt(1 - self.confidence)
-        m1 = (self.Rhat ** 2 + 2) ** 2 * (2 + np.sqrt(2 + 2 * np.log(4 / delta_1))) ** 2
-        m2 = ((8 + np.sqrt(32 * np.log(4 / self.confidence))) ** 2) / ((np.sqrt(self.Rhat + 4) - self.Rhat) ** 4)
+        delta_bar = 1 - np.sqrt(1 - self.confidence)
+        m1 = (self.Rhat ** 2 + 2) ** 2 * (2 + np.sqrt(2 * np.log(4 / delta_bar))) ** 2
+        m2 = ((8 + np.sqrt(32 * np.log(4 / delta_bar))) ** 2) / ((np.sqrt(self.Rhat + 4) - self.Rhat) ** 4)
 
-        return np.ceil(max(m1, m2))
+        return int(np.ceil(max(m1, m2)))
 
     def get_constants(self) -> (float, float):
         """
         Get the constants for the optimization problem. These are
         - gamma1: the confidence on the first moment
         - gamma2: the confidence on the second moment
-        The formulas are as in Delage and Ye (2010), Cor. 3 and Eq. (15)
+        The formulas are as in Delage and Ye (2010), Cor. 3
 
         :return: gamma1, gamma2
         """
@@ -104,8 +103,8 @@ class MomentDRO:
         # Delage and Ye, Cor. 3
         # R_bar
         M = max(self.m, self.assert_m())
-        temp = (2 + np.sqrt(2*np.log(4/self.confidence))) / np.sqrt(M)
-        R_bar = self.Rhat / np.sqrt(1 - (self.Rhat**2+2) * temp)
+        temp = (2 + np.sqrt(2 * np.log(4 / delta_bar))) / np.sqrt(M)
+        R_bar = self.Rhat / np.sqrt(1 - (self.Rhat ** 2 + 2) * temp)
         # alpha_bar and beta_bar
         alpha_bar = (R_bar ** 2 / np.sqrt(M)) * (np.sqrt(1 - self.d / R_bar ** 4) + np.sqrt(np.log(4 / delta_bar)))
         beta_bar = (R_bar ** 2 / M) * (2 + np.sqrt(2 * np.log(2 / delta_bar))) ** 2
@@ -153,20 +152,26 @@ class MomentDRO:
         mu0, sigma0 = self._get_moments()
 
         # step 4: define variables
-        theta = cp.Variable(self.d-1)
-        _lambda = cp.Variable()
-        Q = cp.Variable((self.d, self.d), symmetric=True)
-        q = cp.Variable(self.d)
-        r = cp.Variable()
-        t = cp.Variable()
+        theta = cp.Variable(self.d - 1)
+        _lambda = cp.Variable((), 'lambda')
+        Q = cp.Variable((self.d, self.d), 'Q', symmetric=True)
+        q = cp.Variable(self.d, 'q')
+        r = cp.Variable((), 'r')
+        t = cp.Variable((), 't')
 
         # objective function
         objective = r + t
 
         # constraints
-        constraints = [Q >> 0] # constraint (3.8d)
-        constraints += self._constraint_38b(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (3.8b)
-        constraints += self._constraint_38c(_lambda, Q, q, theta, r)  # constraint (3.8c)
+        constraints = [Q >> 0]  # constraint (8d)
+
+        ################################
+        # hier beginnen de problemen
+        constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
+        # constraints += self._constraint_8c(t, Q, q, 10,10, sigma0, mu0)  # constraint (8b)
+        #       → met 10,10 werkt het wel voor lage dimensies. Andere getallen geven soms problemen (zoals unbounded)
+        constraints += self._constraint_8b(_lambda, Q, q, theta, r)  # constraint (8c)
+
 
         # solve the problem
         prob = cp.Problem(cp.Minimize(objective), constraints)
@@ -186,57 +191,16 @@ class MomentDRO:
             print(f"r: {r.value} \n")
             print(f"t: {t.value} \n")
 
-        # step 4: define variables
-        theta = cp.Variable(self.d-1)
-        _lambda = cp.Variable()
-        Q = cp.Variable((self.d, self.d), symmetric=True)
-        q = cp.Variable(self.d)
-        r = cp.Variable()
-        P = cp.Variable((self.d, self.d), symmetric=True)
-        p = cp.Variable(self.d)
-        s = cp.Variable()
-
-        objective = gamma2 * self._frob_prod(sigma0, Q) - cp.quad_form(mu0, Q) + r + \
-            self._frob_prod(sigma0, P) - 2 * mu0.T @ p + gamma1 * s
-
-        # constraints (number corresponds to the equation in Delage and Ye (2010))
-        constraints = [Q >> 0]  # constraint (6d)
-        constraints += [q + 2 * Q @ mu0 + 2 * p == 0]  # constraint (6b)
-        constraints += self._constraint_6c(P, p, s)  # constraint (6c)
-        constraints += self._constraint_6e(_lambda, Q, q, theta, r)  # constraint (6e)
-
-        # solve the problem
-        prob = cp.Problem(cp.Minimize(objective), constraints)
-        prob.solve(solver=self.solver, verbose=verbose)
-
-        if prob.status == cp.INFEASIBLE:
-            raise ValueError("Problem is infeasible")
-        elif prob.status == cp.OPTIMAL_INACCURATE:
-            print("Problem is solved but the solution is inaccurate")
-
-        self.theta = theta.value
-        if verbose:
-            print(f"Optimal theta: {self.theta}")
-            # print values of the variables
-            print(f"Q: {Q.value} \n")
-            print(f"q: {q.value} \n")
-            print(f"r: {r.value} \n")
-            print(f"P: {P.value} \n")
-            print(f"p: {p.value} \n")
-            print(f"s: {s.value} \n")
-        return self.theta
-
-
-    def _constraint_6c(self, P, p, s):
+    def _constraint_8c(self, t, Q, q, gamma1, gamma2, sigma0, mu0):
         """
-        Constraint (6c) in Delage and Ye (2010)
+        Constraint (8b) in Delage and Ye (2010)
         """
-        _p = cp.reshape(p, (self.d, 1))
-        _s = cp.reshape(s, (1, 1))
-        M = cp.bmat([[P, _p], [_p.T, _s]])
-        return [M >> 0]
+        eigval, eigvec = np.linalg.eigh(sigma0)
+        sigma0_sqrt = eigvec @ np.diag(np.sqrt(eigval)) @ eigvec.T
+        return [t >= self._frob_prod(gamma2 * sigma0 + np.outer(mu0, mu0), Q) + mu0.T @ q +
+                np.sqrt(gamma1) * cp.norm2(sigma0_sqrt @ (q + Q @ (2 * mu0)))]
 
-    def _constraint_6e(self, _lambda, Q, q, theta, r):
+    def _constraint_8b(self, _lambda, Q, q, theta, r):
         """
         Constraint (6e) in Delage and Ye (2010)
         """
@@ -244,7 +208,7 @@ class MomentDRO:
         A12 = 0.5 * cp.reshape(q, (self.d, 1)) - _lambda * a
         A_bar = cp.bmat([[Q - _lambda * A, A12], [A12.T, r - _lambda * c]])
         ext = cp.vstack([-1.0, 0.0])
-        Theta_ext = cp.vstack([cp.reshape(theta, (self.d-1, 1)), ext])
+        Theta_ext = cp.vstack([cp.reshape(theta, (self.d - 1, 1)), ext])
         M = cp.bmat([[A_bar, Theta_ext], [Theta_ext.T, cp.reshape(1.0, (1, 1))]])
         return [M >> 0, _lambda >= 0]
 
@@ -276,7 +240,6 @@ class MomentDRO:
             theta = self.theta
 
         return self._loss_function(theta, test_data)
-
 
     @staticmethod
     def _loss_function(theta, data, cvxpy=False):
@@ -312,15 +275,15 @@ def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
     n = 100
-    d = 2
+    d = 5
     a, b = 0, 5
     assert a < b
     sigma = 2
-    slope = np.ones((d-1, ))
-    train_x = generator.uniform(a, b, (n, d-1))
+    slope = np.ones((d - 1,))
+    train_x = generator.uniform(a, b, (n, d - 1))
     train_y = np.array([np.dot(slope, x) for x in train_x]) + sigma * generator.standard_normal(n)
     data = np.vstack((train_x.T, train_y))
-    ellipsoid = Ellipsoid.ellipse_from_corners(a * np.ones((d-1, )), b * np.ones((d-1, )), -3 * sigma, 3 * sigma,
+    ellipsoid = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -3 * sigma, 3 * sigma,
                                                slope, scaling_factor=1.05)
 
     # test the MomentDRO class

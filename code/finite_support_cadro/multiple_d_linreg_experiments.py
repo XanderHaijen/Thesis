@@ -77,12 +77,12 @@ def experiment2(seed):
         delta_w = (b - a) / 2
         ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
-        ses.type = "SES"
+        ses.type = "SCC"  # smallest circumscribed cube
 
         # r = np.dot(slope, b * np.ones((d - 1,))) + 4
         # ses = Ellipsoid.ellipse_from_corners(-r * np.ones((d - 1,)), r * np.ones((d - 1,)), -r, r, theta=np.zeros((d - 1,)),
         #                                      scaling_factor=1.05)
-        # ses.type = "SCC"  # smallest circumscribed cube
+        # ses.type = "SES"  # smallest enclosing sphere
 
         # conduct experiments for Löwner-John ellipsoid
         # print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
@@ -111,12 +111,12 @@ def experiment2(seed):
         alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
 
         # write the dataframe to a text file as latex tables and to an Excel file
-        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.xlsx") as writer:
+        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_{ses.type}.xlsx") as writer:
             alpha_data.to_excel(writer, sheet_name='alpha')
             loss_0_data.to_excel(writer, sheet_name='loss_0')
             loss_star_data.to_excel(writer, sheet_name='loss_star')
 
-        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_ses.txt", "w") as f:
+        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_{ses.type}.txt", "w") as f:
             f.write("Alpha data \n")
             f.write(alpha_data.to_latex(float_format="%.0f"))
             f.write("\n")
@@ -300,8 +300,8 @@ def experiment3a(seed):
     Test the effect of rotating the LJ ellipsoid on the CADRO method
     """
     # generate the data
-    d = 2
-    m = 40
+    d = 10
+    m = 150
     sigma = 2
     rico = 1
     nb_tries = 100
@@ -310,45 +310,47 @@ def experiment3a(seed):
     generator = np.random.default_rng(seed)
     slope = rico * np.ones((d - 1,))
 
-    x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
-    y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma, m,
-                                                                                      outliers=True)
-    # subtract the mean from the data
-    data = np.vstack([x, y])
+    emp_slope = slope
+    lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+                                        scaling_factor=1.05)
+    if d == 2:
+        plt.figure()
+        lj.plot(color='r', label="LJ")
+        # plot a line along the actual slope
+        plt.plot([a, b], [a * slope[0], b * slope[0]], color='g', label="Slope")
 
-    # get the ellipsoid
-    corners_x = aux.hypercube_corners(a, b, d - 1, 1e6, generator)
-    emp_slope = slope + np.clip(generator.normal(scale=0.1, size=(d - 1,)), -0.2, 0.2)  # random disturbance
-    lj, corners = aux.ellipse_from_corners(corners_x.T, theta=emp_slope, ub=8, lb=8, kind="lj", return_corners=True)
-
-    plt.figure()
-    plt.scatter(data[0, :], data[1, :], marker='.')
-    lj.plot(color='r', label="LJ")
-    # plot a line along the actual slope
-
-    angles = - np.linspace(np.deg2rad(5), np.deg2rad(50), 10)
-    colors = plt.cm.viridis(np.linspace(0, 1, len(angles)))
-    ellipsoids = [lj]
+    angles_pos = np.linspace(np.deg2rad(10), np.deg2rad(70), 7)
+    angles_neg = - np.linspace(np.deg2rad(70), np.deg2rad(10), 7)
+    # concatenate and include 0
+    angles = np.concatenate((angles_neg, [0], angles_pos))
+    if d == 2:
+        colors = plt.cm.viridis(np.linspace(0, 1, len(angles)))
+    ellipsoids = []
 
     test_x = MDG.uniform_unit_hypercube(generator, d - 1, 1000)
     test_y = np.array([np.dot(test_x[:, i], slope) for i in range(1000)]) + MDG.normal_disturbance(generator, sigma,
                                                                                                    1000, True)
     test_data = np.vstack([test_x, test_y])
     for angle in angles:
-        R = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
-        ellipsoid = Ellipsoid(R.T @ lj.A @ R, R.T @ lj.a, lj.c, R.T @ lj.shape @ R, R.T @ lj.center)
+        R = aux.rotation_matrix(d, angle, components = [1, 3])
+        # for higher dimensions, we do not need the shape and center matrices
+        shape = R.T @ lj.shape @ R if lj.shape is not None else None
+        center = R.T @ lj.center if lj.center is not None else None
+        ellipsoid = Ellipsoid(R.T @ lj.A @ R, R.T @ lj.a, lj.c, shape, center)
+        ellipsoid.type = "LJ_rotated"
         ellipsoids.append(ellipsoid)
-        ellipsoid.plot(label=r'$\phi = ' + str(round(np.rad2deg(angle))) + r'^\circ$',
-                       color=colors[np.where(angles == angle)[0][0]])
-    plt.legend()
-    plt.grid()
-    plt.show()
+        if d == 2 and angle != 0:
+            ellipsoid.plot(color=colors[np.where(angles == angle)[0][0]], alpha=0.5)
+
+    if d == 2:
+        plt.legend()
+        plt.grid()
+        plt.savefig("thesis_figures/multivariate_ls/rotations/ellipsoids.png")
 
     alpha_array = np.zeros((len(ellipsoids), nb_tries))
     lambda_array = np.zeros((len(ellipsoids), nb_tries))
     loss_r_array = np.zeros((len(ellipsoids)))
     test_loss_r_array = np.zeros((len(ellipsoids)))
-    angles = np.array([0] + list(angles))
 
     for i, ellipsoid in enumerate(ellipsoids):
         test_loss_0_array = np.zeros((nb_tries))
@@ -364,6 +366,7 @@ def experiment3a(seed):
             x = MDG.uniform_unit_hypercube(generator, d - 1, m)
             y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma, m)
             data = np.vstack([x, y])
+            MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
 
             # solve the CADRO problem
             problem = LeastSquaresCadro(data, ellipsoid, solver=cp.MOSEK)
@@ -371,7 +374,7 @@ def experiment3a(seed):
 
             # collect the results
             alpha_array[i, k] = problem.results["alpha"][0]
-            lambda_array[i, k] = problem.results["lambda"]
+            lambda_array[i, k] = problem.results["lambda"][0]
             test_loss_0_array[k] = problem.test_loss(test_data, 'theta_0')
             test_loss_star_array[k] = problem.test_loss(test_data, 'theta')
 
@@ -384,7 +387,7 @@ def experiment3a(seed):
         aux.plot_loss_histograms(ax, test_loss_0_array, test_loss_star_array, test_loss_r_array[i], title=title,
                                  bins=20)
         plt.tight_layout()
-        plt.savefig("thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(np.rad2deg(angles[i]))) + ".png")
+        plt.savefig("thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(np.rad2deg(angles[i]))) + f"d{d}.png")
         plt.show()
 
         print("theta_r", problem.theta_r)
@@ -406,18 +409,17 @@ def experiment3a(seed):
             ax[i].set_yticks([])
 
     plt.tight_layout()
-    plt.savefig("thesis_figures/multivariate_ls/rotations/alphas.png")
+    plt.savefig(f"thesis_figures/multivariate_ls/rotations/alphas_d{d}.png")
     plt.show()
 
-    # define a rotation matrix (3d). First rotate around the z-axis, then around the y-axis
-    # phi = np.deg2rad(30)
-    # psi = np.deg2rad(20)
-    # R = np.array([[np.cos(phi), -np.sin(phi), 0], [np.sin(phi), np.cos(phi), 0], [0, 0, 1]]) @ \
-    #     np.array([[np.cos(psi), 0, np.sin(psi)], [0, 1, 0], [-np.sin(psi), 0, np.cos(psi)]])
-
-    # generate a random orthogonal matrix
-    # R = np.random.rand(d, d)
-    # R, _ = np.linalg.qr(R)
+    # plot the robust test loss as a function of the angle
+    plt.figure()
+    plt.plot(np.rad2deg(angles), test_loss_r_array, marker='o')
+    plt.xlabel(r"$\phi$ (degrees)")
+    plt.ylabel(r"$\ell(\theta_r)$")
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
 
 
 def experiment4(seed):
@@ -506,7 +508,7 @@ def experiment4(seed):
         plt.hist(loss_star_array, bins=100, alpha=0.5, label=r"$\theta$", range=hist_range)
         # add a vertical line for the robust cost if it is in the picture
         if hist_range[1] > loss_r > hist_range[0]:
-            plt.axvline(loss_r, color='black', linestyle='dashed', linewidth=1)
+            plt.axvline(loss_r, color='black', linestyle='--', label=r"$\theta_r$", marker='o')
         plt.title(f"Dimension {d} - {lj.type} ellipsoid")
         plt.legend()
         plt.tight_layout()
@@ -591,7 +593,7 @@ def experiment5(seed):
                             test_loss_r[i, j] = problem.test_loss(test_data, 'theta_r')
 
                         # fill in lambda array and alpha array
-                        lambda_array[i, j, k] = problem.results["lambda"]
+                        lambda_array[i, j, k] = problem.results["lambda"][0]
                         alpha_array[i, j, k] = problem.results["alpha"][0]
 
                     # remove outliers:

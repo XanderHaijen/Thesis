@@ -2,9 +2,9 @@ from typing import List, Callable
 
 from multiple_dimension_cadro import LeastSquaresCadro
 from ellipsoids import Ellipsoid
-from utils.data_generator import ScalarDataGenerator
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def f(x):
@@ -17,143 +17,297 @@ def f(x):
     # return 1 - 2 * x + 3 * x ** 2 - 4 * x ** 3 + 5 * x ** 4 - 6 * x ** 5 + 7 * x ** 6 - \
     # 8 * x ** 7 + 9 * x ** 8 - 10 * x ** 9
     # rational function
-    # return 1 / (1 + 25 * x ** 2)
+    return 1 / (1 + 25 * x ** 2)
     # exponentials
     # return 5 * np.exp(-x)
-    return np.exp(-x ** 2) + 0.5 * np.exp(-x ** 4)
+    # return np.exp(-x ** 2) + 0.5 * np.exp(-x ** 4)
 
 
-def ls_matrix(x, y, basis_functions: List[Callable[[float], float]]):
+def ls_matrix(x, y, basis_functions: Callable[[np.ndarray, int], float], n: int):
     # d x m matrix
-    data = np.zeros((len(basis_functions) + 1, len(x)))
-    for i in range(len(basis_functions)):
-        phi = basis_functions[i]
+    data = np.zeros((n + 1, len(x)))
+    for i in range(n):
         # fill the i-th row
-        data[i, :] = phi(x)
+        data[i, :] = basis_functions(x, i)
     # fill the last row
     data[-1, :] = y
 
     return data
 
 
-def create_lj_from_box(lb, ub):
-    # create the set of corner points of the hyperractangle
-    corners = np.zeros((2 ** len(lb), len(lb)))
-    for i in range(2 ** len(lb)):
-        for j in range(len(lb)):
-            if i & (1 << j):
-                corners[i, j] = ub[j]
-            else:
-                corners[i, j] = lb[j]
-
-    # create the ellipsoid
-    ellipsoid = Ellipsoid.lj_ellipsoid(corners.T)
-    return ellipsoid
-
-
-def evaluate(theta, basis_functions, points):
+def evaluate(theta: np.ndarray, basis_functions: Callable[[np.ndarray, int], float], points: np.ndarray, n: int):
     values = np.zeros(len(points))
     for i, x in enumerate(points):
-        values[i] = np.dot(theta, [phi(x) for phi in basis_functions])
+        values[i] = np.dot(theta, [basis_functions(x, j) for j in range(n)])
 
     return values
 
 
-if __name__ == "__main__":
-    seed = 0
-    m = 25
-    sigma = 0.2
-    a, b = 0, 1
-    f_min, f_max = -2, 3
-    assert f_min < f_max
-
-    # training_data
-    # x is the Chebysev nodes on the interval [a, b]
-    generator = np.random.default_rng(seed)
-    x = (a + b) / 2 + (b - a) / 2 * np.cos((2 * np.arange(1, m + 1) - 1) * np.pi / (2 * m))
-    y = f(x) + sigma * generator.standard_normal(len(x))
-    y = np.clip(y, f_min, f_max)
-
-    # test_data
-    x_test = np.linspace(a, b, 1000)
-    y_test = f(x_test) + sigma * generator.standard_normal(len(x_test))
-    y_test = np.clip(y_test, f_min, f_max)
-
-    # basis functions
-    # sin(n * pi * x), n=1,..,d-1
-    # basis_functions = (lambda x: np.ones_like(x),
-    #                    lambda x: np.sin(np.pi * x),
-    #                    lambda x: np.sin(2 * np.pi * x),
-    #                    lambda x: np.sin(3 * np.pi * x),
-    #                    lambda x: np.sin(4 * np.pi * x),
-    #                    lambda x: np.sin(5 * np.pi * x),
-    #                    lambda x: np.sin(6 * np.pi * x))
-    # d = len(basis_functions) + 1
-    # phi_min = [-1] * (d - 1)
-    # phi_max = [1] * (d - 1)
-
-    # monomial
-    basis_functions = (lambda x: np.ones_like(x),
-                       lambda x: x,
-                       lambda x: x ** 2,
-                       lambda x: x ** 3,
-                       lambda x: x ** 4,
-                       lambda x: x ** 5,
-                       lambda x: x ** 6,
-                       lambda x: x ** 7,
-                       lambda x: x ** 8,
-                       lambda x: x ** 9,
-                       lambda x: x ** 10)
-    d = len(basis_functions) + 1
-    phi_min = [0] * (d - 1)
-    phi_max = [1] * (d - 1)
-
-    # plot the basis functions
-    # points = np.linspace(a, b, 300)
-    # for i, phi in enumerate(basis_functions):
-    #     plt.figure()
-    #     plt.plot(points, phi(points))
-    #     plt.title(f"basis function {i + 1}")
-    # plt.show()
-
-    # create data matrix
-    training_data = ls_matrix(x, y, basis_functions)
-    test_data = ls_matrix(x_test, y_test, basis_functions)
-
-    # create the ellipsoid based on the bounding box
-    lb = phi_min + [f_min]
-    ub = phi_max + [f_max]
-    ellipsoid = create_lj_from_box(lb, ub)
-
-    # ellipsoid = Ellipsoid.lj_ellipsoid(training_data)
-
-    # create the problem
-    # shuffling the data
-    generator.shuffle(training_data.T)
+def fit_curve(x, y, x_test, y_test,
+              basis_functions: Callable[[np.ndarray, int], float], n: int,
+              phi_min: np.ndarray, phi_max: np.ndarray, f_min: float, f_max: float):
+    training_data = ls_matrix(x, y, basis_functions, n)
+    ellipsoid = Ellipsoid.ellipse_from_corners(phi_min, phi_max, f_min, f_max, theta=np.zeros((n,)))
     problem = LeastSquaresCadro(training_data, ellipsoid)
     problem.solve()
     problem.set_theta_r()
 
-    # plot results
+    test_data = ls_matrix(x_test, y_test, basis_functions, n)
+    test_loss = problem.test_loss(test_data)
+    test_loss_0 = problem.test_loss(test_data, type='theta_0')
+    test_loss_r = problem.test_loss(test_data, type='theta_r')
+
+    results = problem.results
+    results.update({"test_loss": test_loss})
+    results.update({"test_loss_0": test_loss_0})
+    results.update({"test_loss_r": test_loss_r})
+
+    return results
+
+
+def plot_basis_functions(basis_functions: Callable[[np.ndarray, int], float], n: int, a: float, b: float):
     points = np.linspace(a, b, 300)
-
-    theta_star = problem.results["theta"]
-    theta_r = problem.results["theta_r"]
-    theta_0 = problem.results["theta_0"][0]
-
-    curve_star = evaluate(theta_star, basis_functions, points)
-    curve_r = evaluate(theta_r.reshape(-1), basis_functions, points)
-    curve_0 = evaluate(theta_0.reshape(-1), basis_functions, points)
-    actual_curve = f(points)
-
-    plt.figure()
-    plt.scatter(x, y, label="data", marker=".")
-    plt.plot(points, curve_star, label=r"$\theta^*$")
-    # plt.plot(points, curve_r, label=r"$\theta_r$", linestyle="--")
-    plt.plot(points, curve_0, label=r"$\theta_0$", linestyle="--")
-    # plt.plot(points, actual_curve, label="actual", linestyle="--")
+    for i in range(n):
+        plt.plot(points, basis_functions(points, i), label=f"i = {i + 1}")
     plt.legend()
     plt.show()
 
-    print("theta_0: ", theta_0)
-    print("theta_star: ", theta_star)
+
+def experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, title, verbose=True):
+    """
+    For the given basis functions, plot the fitted curve for different values of n.
+    """
+    generator = np.random.default_rng(seed)
+    x = np.linspace(a, b, m)
+    x_test = np.linspace(a, b, 3000)
+    generator.shuffle(x)
+    y = f(x) + sigma * generator.standard_normal(len(x))
+    y_test = f(x_test) + sigma * generator.standard_normal(len(x_test))
+    y = np.clip(y, f_min, f_max)
+    y_test = np.clip(y_test, f_min, f_max)
+
+    n_list = list(range(1, 10))
+    plot_points = np.linspace(a, b, 300)
+    function_values_star = np.zeros((len(n_list), len(plot_points)))
+    function_values_r = np.zeros((len(n_list), len(plot_points)))
+    function_values_0 = np.zeros((len(n_list), len(plot_points)))
+
+    for i, n in enumerate(n_list):
+        phi_min_array = np.full((n,), phi_min)
+        phi_max_array = np.full((n,), phi_max)
+        if verbose:
+            print("n = ", n)
+        results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+        if verbose:
+            print("test_loss_0: ", results["test_loss_0"])
+            print("test loss: ", results["test_loss"])
+            print()
+
+        theta_star = np.reshape(results["theta"], (n,))
+        theta_r = np.reshape(results["theta_r"], (n,))
+        theta_0 = np.reshape(results["theta_0"][0], (n,))
+
+        function_values_star[i, :] = evaluate(theta_star, basis_functions, plot_points, n)
+        function_values_r[i, :] = evaluate(theta_r, basis_functions, plot_points, n)
+        function_values_0[i, :] = evaluate(theta_0, basis_functions, plot_points, n)
+
+    actual_curve = f(plot_points)
+
+    fig, ax = plt.subplots(nrows=3, ncols=3, figsize=(15, 15))
+    for i, n in enumerate(n_list):
+        ax[i // 3, i % 3].plot(plot_points, actual_curve, label="actual", color='grey')
+        # add points
+        ax[i // 3, i % 3].scatter(x, y, color='grey', marker='.')
+        ax[i // 3, i % 3].plot(plot_points, function_values_r[i, :], label=r"$\theta_r$", color='red')
+        ax[i // 3, i % 3].plot(plot_points, function_values_0[i, :], label=r"$\theta_0$", color='orange')
+        ax[i // 3, i % 3].plot(plot_points, function_values_star[i, :], label=r"$\theta^\star$",
+                               linestyle='-.', color='black')
+
+        ax[i // 3, i % 3].legend()
+        ax[i // 3, i % 3].set_title(f"n = {n}")
+
+    plt.savefig(f"experiment1_{title}.png")
+    plt.show()
+
+
+def experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                title, results_df, nb_tries=100, verbose=False):
+    """
+    For the given basis functions, run the algorithm with increasing degree of the basis functions
+    until the robust solution is found. Then return the degree, and the results.
+    """
+    generator = np.random.default_rng(seed)
+    x_ord = np.linspace(a, b, m)
+    x_test = np.linspace(a, b, 3000)
+    collapse_dims = np.zeros(nb_tries)
+    loss_0_array = np.zeros(nb_tries)
+    loss_r_array = np.zeros(nb_tries)
+
+    for j in range(nb_tries):
+        x = np.copy(x_ord)
+        generator.shuffle(x)
+        y = f(x) + sigma * generator.standard_normal(len(x))
+        y_test = f(x_test) + sigma * generator.standard_normal(len(x_test))
+        y = np.clip(y, f_min, f_max)
+        y_test = np.clip(y_test, f_min, f_max)
+
+        n = 1
+
+        while True:
+            phi_min_array = np.full((n,), phi_min)
+            phi_max_array = np.full((n,), phi_max)
+            if verbose:
+                print("n = ", n)
+            results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+            if verbose:
+                print("test_loss_0: ", results["test_loss_0"])
+                print("test loss: ", results["test_loss"])
+                print()
+
+            if np.abs(results["test_loss_r"] - results["test_loss"]) < 1e-5:
+                break
+            elif n > 50:
+                n = np.inf
+                break
+            n += 1
+
+        collapse_dims[j] = n
+        loss_0_array[j] = results["test_loss_0"]
+        loss_r_array[j] = results["test_loss_r"]
+
+    # collapse dims
+    n_mean = np.mean(collapse_dims[collapse_dims != np.inf])
+    n_std = np.std(collapse_dims[collapse_dims != np.inf])
+    n_nb_inf = np.sum(collapse_dims == np.inf)
+    valid_indices = np.where(collapse_dims != np.inf)
+    # losses and theta differences
+    loss_0_data = {"mean": np.mean(loss_0_array[valid_indices]), "std": np.std(loss_0_array[valid_indices])}
+    loss_r_data = {"mean": np.mean(loss_r_array[valid_indices]), "std": np.std(loss_r_array[valid_indices])}
+    results_df.loc[len(results_df)] = {"function": title, "collapse_dim_mean": round(n_mean, 2),
+                                       "collapse_dim_std": round(n_std, 2), "collapse_dim_inf": n_nb_inf,
+                                       "test_loss_0_mean": round(loss_0_data["mean"], 3),
+                                       "test_loss_0_std": round(loss_0_data["std"], 3),
+                                       "test_loss_r_mean": round(loss_r_data["mean"], 3),
+                                       "test_loss_r_std": round(loss_r_data["std"], 3)}
+    return results_df
+
+def experiment3():
+    """
+    Plot the six test functions and corresponding basis functions.
+    """
+    plt.rcParams.update({'font.size': 15})
+
+    basis_1 = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
+    basis_2 = lambda x, i: x ** i
+    basis_3 = lambda x, i: np.exp(-i * x)
+
+    basis = [basis_1, basis_2, basis_3]
+    basis_titles = ["trigonometric", "monomial", "exponential"]
+
+    f1 = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
+    f2 = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
+    f3 = lambda x: 500 * (x - 0.25) * (x - 0.75) ** 2 * (x - 0.05) * (x - 1)
+    f4 = lambda x: np.exp(- x ** 2)
+    f5 = lambda x: 1 / (1 + 25 * x ** 2)
+    f6 = lambda x: 5 * np.exp(-x) + np.exp(-2 * x) + 0.5 * np.exp(-5 * x)
+
+    fs = [f1, f2, f3, f4, f5, f6]
+    titles = ["trigonometric", "hat", "polynomial", "gaussian", "rational", "exponentials"]
+
+    x = np.linspace(0, 1, 500)
+
+    fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(15, 10))
+    for i, f in enumerate(fs):
+        ax[i // 3, i % 3].plot(x, f(x))
+        ax[i // 3, i % 3].set_title(titles[i])
+    plt.savefig("experiment3_functions.png")
+    plt.show()
+
+    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(15, 5))
+    for i, b in enumerate(basis):
+        for j in range(5):
+            ax[i].plot(x, b(x, j), label=r"$\phi_{}$".format(j))
+            ax[i].set_title(basis_titles[i])
+        ax[i].legend()
+    plt.savefig("experiment3_basis_functions.png")
+    plt.show()
+
+if __name__ == "__main__":
+    seed = 0
+    m = 40
+    a, b = 0, 1
+    nb_tries = 100
+    plt.rcParams.update({'font.size': 15})
+    # bookkeeping for experiment 2
+    results = pd.DataFrame(columns=["function", "collapse_dim_mean", "collapse_dim_std", "collapse_dim_inf",
+                                    "test_loss_0_mean", "test_loss_0_std", "test_loss_r_mean", "test_loss_r_std"])
+
+    n = 4  # number of basis functions
+    d = n + 1
+    # basis functions
+    # sin(n * pi * x), n=1,..,d-1
+    basis_functions = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
+    # trig function
+    f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
+    f_min, f_max = -1.5, 1.5
+    phi_min, phi_max = -1, 1
+    sigma = 0.25
+
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "trigonometric")
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "trigonometric",
+                          results, nb_tries)
+
+    # hat function
+    f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
+    f_min, f_max = -0.5, 1.5
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "hat",
+                          results, nb_tries)
+
+    # monomial basis functions
+    basis_functions = lambda x, i: x ** i
+    f = lambda x: 500 * (x - 0.25) * (x - 0.75) ** 2 * (x - 0.05) * (x - 1)
+    f_min, f_max = -3.5, 1.5
+    phi_min, phi_max = 0, 1
+    sigma = 1
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial")
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial",
+                          results, nb_tries)
+
+    f = lambda x: np.exp(- x ** 2)
+    f_min, f_max = 0, 1.5
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "gaussian",
+                          results, nb_tries)
+
+    # negative exponential basis functions
+    basis_functions = lambda x, i: np.exp(-i * x)
+    f = lambda x: 1 / (1 + 25 * x ** 2)
+    f_min, f_max = -0.5, 1.5
+    phi_min, phi_max = 0, 1
+    sigma = 0.1
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponential")
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "rational",
+                          results, nb_tries)
+
+    # exponentials
+    f = lambda x: 5 * np.exp(-x) + np.exp(-2 * x) + 0.5 * np.exp(-5 * x)
+    f_min, f_max = 1.5, 7
+    phi_min, phi_max = 0, 1
+    sigma = 0.1
+
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponentials",
+                          results, nb_tries)
+
+    # round all numbers to two decimal places
+    print(results)
+    results.to_latex("results.txt", float_format="%.2f")
+
+    plt.rcParams.update({'font.size': 10})
+
+    # experiment3()

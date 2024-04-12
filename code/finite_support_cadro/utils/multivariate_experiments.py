@@ -157,3 +157,14 @@ def hypercube_corners(a, b, d, d_max=1e6, generator=None):
     return corners_x
 
 
+def rotation_matrix(d, theta, components: list):
+    """
+    Generate a rotation matrix for the d-dimensional space. All the components of the vector are rotated by theta.
+    """
+    # components give the two components that are rotated
+    R = np.eye(d)
+    R[components[0], components[0]] = np.cos(theta)
+    R[components[1], components[1]] = np.cos(theta)
+    R[components[0], components[1]] = -np.sin(theta)
+    R[components[1], components[0]] = np.sin(theta)
+    return R
