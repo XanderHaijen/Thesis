@@ -10,6 +10,7 @@ import pandas as pd
 from time import time
 from datetime import datetime
 from sklearn.decomposition import PCA
+from moment_dro import MomentDRO
 
 
 def experiment1(seed):
@@ -250,51 +251,6 @@ def experiment2_loop(dimension, ellipsoid, generator, slope, a, b):
     return df_alpha, df_loss_0, df_loss_star, [loss_r, np.mean(test_loss_r_array)]
 
 
-def experiment3(seed):
-    """
-    Construct rotated ellipses based on PCA
-
-    Drop this altogether?
-    """
-    d = 2
-    m = 20
-    sigma = 1.5
-    rico = 4
-    a, b = 0, 10
-    assert b > a
-
-    generator = np.random.default_rng(seed)
-    slope = rico * np.ones((d - 1,))
-
-    # support generating data uniformly from the unit hypercube
-    x = 3 * MDG.uniform_unit_hypercube(generator, d - 1, 4 * m)
-    y = np.array([np.dot(x[:, i], slope) for i in range(4 * m)]) + MDG.normal_disturbance(generator, sigma, 4 * m,
-                                                                                          False)
-
-    data = np.vstack([x, y])
-    # get the principal components
-    pca = PCA(n_components=d)
-    pca.fit(data.T)
-    R = pca.components_
-    # add a disturbance to R
-    # put the columns in reverse order
-    R = R[:, ::-1]
-    R += generator.normal(scale=5, size=(d, d))
-
-    # construct orthogonal matrix from R
-    Q, _ = np.linalg.qr(R)
-
-    ellipsoid = Ellipsoid.from_principal_axes(R, data, solver=cp.MOSEK, verbose=True, max_length=10, scaling_factor=1.5)
-    lj = Ellipsoid.lj_ellipsoid(data)
-    if d == 2:
-        # plot data and ellipsoid
-        plt.figure()
-        plt.scatter(data[0, :], data[1, :])
-        ellipsoid.plot(color='r')
-        lj.plot(color='g')
-        plt.show()
-
-
 def experiment3a(seed):
     """
     Test the effect of rotating the LJ ellipsoid on the CADRO method
@@ -422,51 +378,47 @@ def experiment3a(seed):
     plt.show()
 
 
-def experiment4(seed):
+def experiment4(seed, solver, dimensions):
     """
     Time the CADRO method for different dimensions
     """
-    dimensions = [5, 10, 15, 20, 25, 30, 35, 40, 100, 250, 500, 1000]
     generator = np.random.default_rng(seed)
     timings_mean_array = np.zeros((len(dimensions)))
     timings_std_array = np.zeros((len(dimensions)))
-    nb_tries = 1000
-    nb_warmup = 1000
+    nb_tries = 2
+    nb_warmup = 2
     a, b = 0, 6
     assert b > a
 
     for n_d, d in enumerate(dimensions):
         with open("progress.txt", "a") as f:
-            f.write(f"{datetime.now()} - Dimension {d} \n")
+            f.write('------------------------------------------------------\n')
+            f.write(f"{datetime.now()} - Dimension {d} - Solver {solver}\n")
 
         # generate a dataset to calculate the supporting ellipses
-        # we do not use the corner method here due to scalability issues but rather generate a large dataset
-        # and limit the disturbance
-        support_generating_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, int(5 * d * np.log(d))) + a
-        support_generating_y = np.array([np.dot(support_generating_x[:, i], np.ones((d - 1,))) for i in
-                                         range(int(5 * d * np.log(d)))])
-        disturbance = MDG.normal_disturbance(generator, 1, int(5 * d * np.log(d)), False)
-        disturbance = np.clip(disturbance, -2, 2)
-        support_generating_y += disturbance
-        support_generating = np.vstack([support_generating_x, support_generating_y])
+        ubx = b * np.ones((d - 1,))
+        lbx = a * np.ones((d - 1,))
+        lbw, ubw = -2, 2
+        slope = np.ones((d - 1,)) + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)
+        ellipse = Ellipsoid.ellipse_from_corners(lbx, ubx, lbw, ubw, theta=slope, scaling_factor=1.05)
 
-        # calculate the LJ ellipsoid
-        lj = Ellipsoid.lj_ellipsoid(support_generating)
+        if n_d == 0:
+            for _ in range(nb_warmup):
+                x = MDG.uniform_unit_hypercube(generator, d - 1, int(5 * d))
+                y = np.array([np.dot(x[:, i], np.ones((d - 1,))) for i in range(int(5 * d))]) + \
+                    MDG.normal_disturbance(generator, 1, int(5 * d), True)
+                data = np.vstack([x, y])
+                problem = LeastSquaresCadro(data, ellipse, solver=cp.MOSEK)
+                problem.solve()
+
+        robust_opt = RobustOptimization(ellipse)
+        robust_opt.solve_least_squares()
+        loss_r = robust_opt.cost
+
         timings_array = np.zeros((nb_tries))
         loss_0_array = np.zeros((nb_tries))
         loss_star_array = np.zeros((nb_tries))
 
-        if n_d == 0:
-            for _ in range(nb_warmup):
-                x = MDG.uniform_unit_hypercube(generator, d - 1, int(5 * d * np.log(d)))
-                y = np.array([np.dot(x[:, i], np.ones((d - 1,))) for i in range(int(5 * d * np.log(d)))])
-                data = np.vstack([x, y])
-                problem = LeastSquaresCadro(data, lj, solver=cp.MOSEK)
-                problem.solve()
-
-        robust_opt = RobustOptimization(lj)
-        robust_opt.solve_least_squares()
-        loss_r = robust_opt.cost
         for k in range(nb_tries):
             # sample uniformly from the unit hypercube
             x = MDG.uniform_unit_hypercube(generator, d - 1, int(2 * d * np.log(d)))
@@ -474,46 +426,67 @@ def experiment4(seed):
                 MDG.normal_disturbance(generator, 1, int(2 * d * np.log(d)), True)
             data = np.vstack([x, y])
 
-            # time the CADRO method
-            t1 = time()
-            problem = LeastSquaresCadro(data, lj, solver=cp.MOSEK)
-            problem.solve()
-            t2 = time()
+            try:
+                # time the CADRO method
+                t1 = time()
+                problem = LeastSquaresCadro(data, ellipse, solver=solver)
+                problem.solve()
+                t2 = time()
 
-            # collect timings
-            timings_array[k] = t2 - t1
-
-            # collect losses
-            loss_0_array[k] = problem.test_loss(data, 'theta_0')
-            loss_star_array[k] = problem.test_loss(data, 'theta')
+                # collect timings
+                timings_array[k] = t2 - t1
+                loss_0_array[k] = problem.test_loss(data, 'theta_0')
+                loss_star_array[k] = problem.test_loss(data, 'theta')
+            except cp.error.SolverError:
+                timings_array[k] = np.nan
+                loss_0_array[k] = np.nan
+                loss_star_array[k] = np.nan
 
         # calculate the mean and standard deviation of the timings
-        mean_time = np.mean(timings_array)
-        std_time = np.std(timings_array)
-        timings_mean_array[n_d] = mean_time
-        timings_std_array[n_d] = std_time
+        if sum(np.isnan(timings_array)) > int(0.5 * nb_tries):
 
-        # plot the timings
-        with open("progress.txt", "a") as f:
-            f.write(f"{datetime.now()} - Plotting Dimension {d} \n")
-        plt.rcParams.update({'font.size': 15})
-        aux.plot_timings(timings_mean_array[:n_d + 1], timings_std_array[:n_d + 1], dimensions[:n_d + 1])
-        plt.rcParams.update({'font.size': 10})
+            if sum(np.isnan(timings_array)) == nb_tries:
+                mean_time = np.nan
+                std_time = np.nan
+            else:
+                mean_time = np.mean(timings_array, where=~np.isnan(timings_array))
+                std_time = np.std(timings_array, where=~np.isnan(timings_array))
 
-        # make the plot for the loss histograms: overlaying histograms for loss_0 and loss_star
-        plt.figure()
-        hist_range = (min(np.min(loss_0_array), np.min(loss_star_array)),
-                      max(np.max(loss_0_array), np.max(loss_star_array)))
-        plt.hist(loss_0_array, bins=100, alpha=0.5, label=r"$\theta_0$", range=hist_range)
-        plt.hist(loss_star_array, bins=100, alpha=0.5, label=r"$\theta$", range=hist_range)
-        # add a vertical line for the robust cost if it is in the picture
-        if hist_range[1] > loss_r > hist_range[0]:
-            plt.axvline(loss_r, color='black', linestyle='--', label=r"$\theta_r$", marker='o')
-        plt.title(f"Dimension {d} - {lj.type} ellipsoid")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig("hist_loss_d" + str(d) + "_" + lj.type + ".png")
-        plt.close()
+            with open("progress.txt", "a") as f:
+                f.write(f"{datetime.now()} - Plotting ... \n")
+                f.write(f"Time for dimension {d}: {mean_time} (+/- {std_time}) (s) \n")
+                f.write(f"Solver error in {np.sum(np.isnan(timings_array))} cases. Aborting. \n")
+                return
+        else:
+            mean_time = np.mean(timings_array, where=~np.isnan(timings_array))
+            std_time = np.std(timings_array, where=~np.isnan(timings_array))
+            timings_mean_array[n_d] = mean_time
+            timings_std_array[n_d] = std_time
+
+            with open("progress.txt", "a") as f:
+                f.write(f"{datetime.now()} - Plotting ... \n")
+                f.write(f"Time for dimension {d}: {mean_time} (+/- {std_time}) (s) \n")
+                f.write(f"Solver error in {np.sum(np.isnan(timings_array))} cases. Continuing. \n")
+
+            # plot the timings
+            plt.rcParams.update({'font.size': 15})
+            aux.plot_timings(timings_mean_array[:n_d + 1], timings_std_array[:n_d + 1], dimensions[:n_d + 1])
+            plt.grid()
+            plt.title(solver)
+            plt.tight_layout()
+            plt.savefig(f"timings_{solver}.png")
+            plt.close()
+            plt.rcParams.update({'font.size': 10})
+
+            # make the plot for the loss histograms: overlaying histograms for loss_0 and loss_star
+            loss_0_array = loss_0_array[~np.isnan(loss_0_array)]
+            loss_star_array = loss_star_array[~np.isnan(loss_star_array)]
+            plt.figure()
+            aux.plot_loss_histograms(plt.gca(), loss_0_array, loss_star_array, loss_r, bins=100,
+                                     title=f"Dimension {d} - {solver}")
+            plt.tight_layout()
+            plt.savefig("hist_loss_d" + str(d) + "_" + ellipse.type + "_" + solver + ".png")
+            plt.close()
 
 
 def experiment5(seed):
@@ -554,6 +527,7 @@ def experiment5(seed):
 
             test_loss_0 = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_star = np.zeros((len(ms), len(sigmas), nb_tries))
+            test_loss_dro = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_r = np.zeros((len(ms), len(sigmas)))
 
             alpha_array = np.zeros((len(ms), len(sigmas), nb_tries))
@@ -579,8 +553,15 @@ def experiment5(seed):
                             MDG.normal_disturbance(generator, 2, m, True)
                         data = np.vstack([x, y])
                         MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
+
+                        # solve the CADRO problem
                         problem = LeastSquaresCadro(data, ellipsoid, solver=cp.MOSEK)
                         problem.solve()
+
+                        # solve the moment DRO problem
+                        dro = MomentDRO(ellipsoid, data, confidence=0.05, solver=cp.MOSEK)
+                        theta_dro = dro.solve(check_data=False)
+
 
                         # fill in the distance arrays
                         dist_star_0[i, j, k] = np.linalg.norm(problem.results["theta"] - problem.results["theta_0"])
@@ -589,6 +570,7 @@ def experiment5(seed):
                         # fill in the loss arrays
                         test_loss_0[i, j, k] = problem.test_loss(test_data, 'theta_0')
                         test_loss_star[i, j, k] = problem.test_loss(test_data, 'theta')
+                        test_loss_dro[i, j, k] = dro.test_loss(test_data, theta_dro)
                         if k == 0:
                             test_loss_r[i, j] = problem.test_loss(test_data, 'theta_r')
 
@@ -609,7 +591,7 @@ def experiment5(seed):
                     plt.xlabel(r"$||\theta^* - \theta_0||$")
                     plt.ylabel(r"$||\theta^* - \theta_r||$")
                     plt.title(f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}")
-                    maximum = (np.max(dist_star_0_plot), max(np.max(dist_star_r_plot), 50))
+                    maximum = (max(np.max(dist_star_0_plot), 5), max(np.max(dist_star_r_plot), 5))
                     plt.ylim([0, maximum[1]])
                     plt.xlim([0, maximum[0]])
                     plt.grid()
@@ -647,10 +629,14 @@ def experiment5(seed):
             fig, ax = plt.subplots()
             aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
                             np.percentile(test_loss_0[:, j, :], 75, axis=1),
-                            np.percentile(test_loss_0[:, j, :], 25, axis=1), np.median(test_loss_star[:, j, :], axis=1),
+                            np.percentile(test_loss_0[:, j, :], 25, axis=1),
+                            np.median(test_loss_star[:, j, :], axis=1),
                             np.percentile(test_loss_star[:, j, :], 75, axis=1),
                             np.percentile(test_loss_star[:, j, :], 25, axis=1),
-                            ms, title=f"Dimension {d} - {ellipsoid.type} - sigma = {sigma}")
+                            np.median(test_loss_dro[:, j, :], axis=1),
+                            np.percentile(test_loss_dro[:, j, :], 75, axis=1),
+                            np.percentile(test_loss_dro[:, j, :], 25, axis=1),
+                            ms, title=None)
 
             plt.tight_layout()
             plt.savefig(
@@ -663,7 +649,14 @@ def experiment5(seed):
 if __name__ == '__main__':
     seed = 0
     # experiment1(seed)
-    experiment2(seed)
+    # experiment2(seed)
     # experiment3a(seed)
-    # experiment4(seed)
     # experiment5(seed)
+    solvers = ['SCS', 'CVXOPT', 'CLARABEL', 'MOSEK']
+    dimensions_lists = [[5, 10, 15, 20],
+                        [5, 10, 15, 20, 25, 30, 35, 40, 100],
+                        [5, 10, 15, 20, 25, 30, 35, 40, 100],
+                        [5, 10, 15, 20, 25, 30, 35, 40, 100, 200, 500, 1000]]
+
+    for i in range(len(solvers)):
+        experiment4(seed, solvers[i], dimensions_lists[i])

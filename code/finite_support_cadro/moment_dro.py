@@ -46,7 +46,7 @@ class MomentDRO:
         :return: mu0, sigma0 as np arrays
         """
         mu0 = np.mean(self.data, axis=1)
-        sigma0 = np.cov(self.data, rowvar=True, bias=True)
+        sigma0 = np.cov(self.data, rowvar=True, bias=True) # + 1e-8 * np.eye(self.data.shape[0])
 
         return mu0, sigma0
 
@@ -79,7 +79,7 @@ class MomentDRO:
 
         self.Rhat = np.sqrt(prob.value)
 
-    def assert_m(self) -> float:
+    def assert_m(self) -> int:
         """
         Assert that the data size is large enough. This checks the condition given by Delage and Ye (2010)
         """
@@ -160,18 +160,19 @@ class MomentDRO:
         t = cp.Variable((), 't')
 
         # objective function
-        objective = r + t
+        objective = t + r
 
         # constraints
-        constraints = [Q >> 0]  # constraint (8d)
+        constraints = [Q >> 0 * np.eye(Q.shape[0])]  # constraint (8d)
 
         ################################
         # hier beginnen de problemen
-        constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
-        # constraints += self._constraint_8c(t, Q, q, 10,10, sigma0, mu0)  # constraint (8b)
+        # print(f"gamma1: {gamma1}, gamma2: {gamma2}")
+        # assert gamma1 > 0 and gamma2 > 0, "Constants are not positive."
+        # constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
+        constraints += self._constraint_8c(t, Q, q, 1000, 1000, sigma0, mu0)  # constraint (8b)
         #       → met 10,10 werkt het wel voor lage dimensies. Andere getallen geven soms problemen (zoals unbounded)
         constraints += self._constraint_8b(_lambda, Q, q, theta, r)  # constraint (8c)
-
 
         # solve the problem
         prob = cp.Problem(cp.Minimize(objective), constraints)
@@ -196,9 +197,13 @@ class MomentDRO:
         Constraint (8b) in Delage and Ye (2010)
         """
         eigval, eigvec = np.linalg.eigh(sigma0)
+        assert np.min(eigval) > 1e-6, "Σ is not pd"
         sigma0_sqrt = eigvec @ np.diag(np.sqrt(eigval)) @ eigvec.T
-        return [t >= self._frob_prod(gamma2 * sigma0 + np.outer(mu0, mu0), Q) + mu0.T @ q +
-                np.sqrt(gamma1) * cp.norm2(sigma0_sqrt @ (q + Q @ (2 * mu0)))]
+        # print(mu0)
+        return [t >= self._frob_prod(gamma2 * sigma0 + np.outer(mu0, mu0), Q) +
+                mu0 @ q +
+                np.sqrt(gamma1) * cp.norm2(sigma0_sqrt @ (q + Q @ (2 * mu0)))
+                ]
 
     def _constraint_8b(self, _lambda, Q, q, theta, r):
         """
@@ -275,7 +280,7 @@ def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
     n = 100
-    d = 5
+    d = 50
     a, b = 0, 5
     assert a < b
     sigma = 2
@@ -287,8 +292,8 @@ def moment_dro_tester(seed):
                                                slope, scaling_factor=1.05)
 
     # test the MomentDRO class
-    dro = MomentDRO(ellipsoid, data, confidence=0.95)
-    dro.solve(verbose=True)
+    dro = MomentDRO(ellipsoid, data, confidence=0.95, solver="MOSEK")
+    dro.solve(verbose=False)
     print(dro.theta)
 
 

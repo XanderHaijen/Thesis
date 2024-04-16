@@ -73,13 +73,27 @@ def plot_basis_functions(basis_functions: Callable[[np.ndarray, int], float], n:
     plt.show()
 
 
-def experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, title, verbose=True):
+def experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, title, verbose=True,
+                nodes="equidistant"):
     """
     For the given basis functions, plot the fitted curve for different values of n.
     """
     generator = np.random.default_rng(seed)
-    x = np.linspace(a, b, m)
-    x_test = np.linspace(a, b, 3000)
+    if nodes == "equidistant":
+        x = np.linspace(a, b, m)
+        x_test = np.linspace(a, b, 3000)
+    elif nodes == "random":
+        x = generator.uniform(a, b, m)
+        x_test = generator.uniform(a, b, 3000)
+    elif nodes == "chebyshev":
+        # chebyshev nodes on [0, 1]
+        x = np.cos((2 * np.arange(1, m + 1) - 1) * np.pi / (2 * m))
+        x = (x + 1) / 2
+        x_test = np.cos((2 * np.arange(1, 3000 + 1) - 1) * np.pi / (2 * 3000))
+        x_test = (x_test + 1) / 2
+    else:
+        raise ValueError("nodes should be either equidistant, random or chebyshev")
+
     generator.shuffle(x)
     y = f(x) + sigma * generator.standard_normal(len(x))
     y_test = f(x_test) + sigma * generator.standard_normal(len(x_test))
@@ -132,14 +146,27 @@ def experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min,
 
 
 def experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
-                title, results_df, nb_tries=100, verbose=False):
+                title, results_df, nb_tries=100, verbose=False, nodes="equidistant"):
     """
     For the given basis functions, run the algorithm with increasing degree of the basis functions
     until the robust solution is found. Then return the degree, and the results.
     """
     generator = np.random.default_rng(seed)
-    x_ord = np.linspace(a, b, m)
-    x_test = np.linspace(a, b, 3000)
+    if nodes == "equidistant":
+        x_ord = np.linspace(a, b, m)
+        x_test = np.linspace(a, b, 3000)
+    elif nodes == "random":
+        x_ord = generator.uniform(a, b, m)
+        x_test = generator.uniform(a, b, 3000)
+    elif nodes == "chebyshev":
+        # chebyshev nodes on [0, 1]
+        x_ord = np.cos((2 * np.arange(1, m + 1) - 1) * np.pi / (2 * m))
+        x_ord = (x_ord + 1) / 2
+        x_test = np.cos((2 * np.arange(1, 3000 + 1) - 1) * np.pi / (2 * 3000))
+        x_test = (x_test + 1) / 2
+    else:
+        raise ValueError("nodes should be either equidistant, random or chebyshev")
+
     collapse_dims = np.zeros(nb_tries)
     loss_0_array = np.zeros(nb_tries)
     loss_r_array = np.zeros(nb_tries)
@@ -183,15 +210,22 @@ def experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min,
     n_nb_inf = np.sum(collapse_dims == np.inf)
     valid_indices = np.where(collapse_dims != np.inf)
     # losses and theta differences
-    loss_0_data = {"mean": np.mean(loss_0_array[valid_indices]), "std": np.std(loss_0_array[valid_indices])}
-    loss_r_data = {"mean": np.mean(loss_r_array[valid_indices]), "std": np.std(loss_r_array[valid_indices])}
-    results_df.loc[len(results_df)] = {"function": title, "collapse_dim_mean": round(n_mean, 2),
-                                       "collapse_dim_std": round(n_std, 2), "collapse_dim_inf": n_nb_inf,
-                                       "test_loss_0_mean": round(loss_0_data["mean"], 3),
-                                       "test_loss_0_std": round(loss_0_data["std"], 3),
-                                       "test_loss_r_mean": round(loss_r_data["mean"], 3),
-                                       "test_loss_r_std": round(loss_r_data["std"], 3)}
+    loss_0_data = {"median": np.median(loss_0_array[valid_indices]),
+                   "p75": np.percentile(loss_0_array[valid_indices], 75),
+                   "p25": np.percentile(loss_0_array[valid_indices], 25)}
+    loss_r_data = {"median": np.median(loss_r_array[valid_indices]),
+                   "p75": np.percentile(loss_r_array[valid_indices], 75),
+                   "p25": np.percentile(loss_r_array[valid_indices], 25)}
+    results_df.loc[len(results_df)] = {"function": title, "collapse_dim_mean": n_mean, "collapse_dim_std": n_std,
+                                       "collapse_dim_inf": n_nb_inf,
+                                       "test_loss_0_p25": loss_0_data["p25"],
+                                       "test_loss_0_median": loss_0_data["median"],
+                                       "test_loss_0_p75": loss_0_data["p75"],
+                                       "test_loss_r_p25": loss_r_data["p25"],
+                                       "test_loss_r_median": loss_r_data["median"],
+                                       "test_loss_r_p75": loss_r_data["p75"]}
     return results_df
+
 
 def experiment3():
     """
@@ -234,15 +268,18 @@ def experiment3():
     plt.savefig("experiment3_basis_functions.png")
     plt.show()
 
+
 if __name__ == "__main__":
     seed = 0
     m = 40
     a, b = 0, 1
     nb_tries = 100
     plt.rcParams.update({'font.size': 15})
+    interpolation = "chebyshev"
     # bookkeeping for experiment 2
     results = pd.DataFrame(columns=["function", "collapse_dim_mean", "collapse_dim_std", "collapse_dim_inf",
-                                    "test_loss_0_mean", "test_loss_0_std", "test_loss_r_mean", "test_loss_r_std"])
+                                    "test_loss_0_p25", "test_loss_0_median", "test_loss_0_p75",
+                                    "test_loss_r_p25", "test_loss_r_median", "test_loss_r_p75"])
 
     n = 4  # number of basis functions
     d = n + 1
@@ -255,17 +292,18 @@ if __name__ == "__main__":
     phi_min, phi_max = -1, 1
     sigma = 0.25
 
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "trigonometric")
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                "trigonometric", nodes=interpolation)
 
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "trigonometric",
-                          results, nb_tries)
+    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                          "trigonometric", results, nb_tries, nodes=interpolation)
 
     # hat function
     f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
     f_min, f_max = -0.5, 1.5
 
     results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "hat",
-                          results, nb_tries)
+                          results, nb_tries, nodes=interpolation)
 
     # monomial basis functions
     basis_functions = lambda x, i: x ** i
@@ -273,16 +311,17 @@ if __name__ == "__main__":
     f_min, f_max = -3.5, 1.5
     phi_min, phi_max = 0, 1
     sigma = 1
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial")
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                "polynomial", nodes=interpolation)
 
     results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial",
-                          results, nb_tries)
+                          results, nb_tries, nodes=interpolation)
 
     f = lambda x: np.exp(- x ** 2)
     f_min, f_max = 0, 1.5
 
     results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "gaussian",
-                          results, nb_tries)
+                          results, nb_tries, nodes=interpolation)
 
     # negative exponential basis functions
     basis_functions = lambda x, i: np.exp(-i * x)
@@ -290,10 +329,11 @@ if __name__ == "__main__":
     f_min, f_max = -0.5, 1.5
     phi_min, phi_max = 0, 1
     sigma = 0.1
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponential")
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                "exponential", nodes=interpolation)
 
     results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "rational",
-                          results, nb_tries)
+                          results, nb_tries, nodes=interpolation)
 
     # exponentials
     f = lambda x: 5 * np.exp(-x) + np.exp(-2 * x) + 0.5 * np.exp(-5 * x)
@@ -302,7 +342,7 @@ if __name__ == "__main__":
     sigma = 0.1
 
     results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponentials",
-                          results, nb_tries)
+                          results, nb_tries, nodes=interpolation)
 
     # round all numbers to two decimal places
     print(results)

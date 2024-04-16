@@ -7,6 +7,7 @@ sys.path.append('..')
 
 from finite_support_cadro.ellipsoids import Ellipsoid
 
+
 def plot_alphas(gca, alpha_array, lambda_array, loss_r, title=None, boxplot=False, scale='linear', marker='.'):
     ind_lambdas_1 = np.where(lambda_array > 0.99)
     ind_lambdas_0 = np.where(lambda_array < 0.01)
@@ -53,18 +54,21 @@ def plot_timings(timings_mean_array, timings_std_array, dimensions, scale='log')
     if scale == 'log':
         ax.set_xscale('log')
         ax.set_yscale('log')
-    plt.grid()
-    plt.tight_layout()
-    plt.savefig("timings.png")
-    plt.close()
 
 
-def plot_loss_m(gca, mean_loss_0, upper_bound_0, lower_bound_0, mean_loss_star, upper_bound_star, lower_bound_star
-                , m, title=None, scale='log'):
-    gca.errorbar(m, mean_loss_0, yerr=[mean_loss_0 - lower_bound_0, upper_bound_0 - mean_loss_0], label=r"$\theta_0$",
+
+def plot_loss_m(gca,
+                mean_loss_0, upper_bound_0, lower_bound_0,
+                mean_loss_star, upper_bound_star, lower_bound_star,
+                mean_loss_dro, upper_bound_dro, lower_bound_dro,
+                m, title=None, scale='log'):
+    gca.errorbar(m, mean_loss_0, yerr=[mean_loss_0 - lower_bound_0, upper_bound_0 - mean_loss_0], label="SAA",
                  color='orange', fmt='o-')
     gca.errorbar(m, mean_loss_star, yerr=[mean_loss_star - lower_bound_star, upper_bound_star - mean_loss_star],
-                 label=r"$\theta$", color='b', fmt='o-')
+                 label="CADRO", color='b', fmt='o-')
+    if mean_loss_dro is not None:
+        gca.errorbar(m, mean_loss_dro, yerr=[mean_loss_dro - lower_bound_dro, upper_bound_dro - mean_loss_dro],
+                     label="DRO", color='g', fmt='o-')
     gca.set_xlabel("m")
     gca.set_ylabel("Loss")
     if title is not None:
@@ -132,7 +136,7 @@ def ellipse_from_corners(corners_x: np.ndarray, theta: np.ndarray,
 def hypercube_corners(a, b, d, d_max=1e6, generator=None):
     # create an array with all the corners of the d - dimensional hypercube
     M = min(2 ** d, d_max)  # maximum number of corners
-    if d**2 > d_max and generator is None:
+    if d ** 2 > d_max and generator is None:
         raise ValueError("The number of corners is too large. Please provide a generator.")
     corners_x = np.zeros((int(M), d))
     k = 0
