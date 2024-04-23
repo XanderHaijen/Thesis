@@ -8,9 +8,15 @@ class MomentDRO:
     Implements the Moment DRO algorithm as in Delage and Ye (2010) for the specific use case of multivariate linear
     regression. The algorithm is used to find the optimal distribution that minimizes the worst-case expected loss
     under the first and second moments of the distribution. The algorithm is based on the concept of support ellipsoid
-    and the R_hat value. The algorithm is based on the following paper:
+    and the R_hat value. The algorithm is based on the following papers:
+
     Delage, E., & Ye, Y. (2010). Distributionally Robust Optimization Under Moment Uncertainty with Application to
     Data-Driven Problems. Operations Research, 58(3), 595-612. https://doi.org/10.1287/opre.1090.0741
+
+    Coppens, P., Schuurmans, M., & Patrinos, P. (2020). Data-driven distributionally robust LQR with multiplicative
+    noise. Proceedings of the 2nd Conference on Learning for Dynamics and Control, 521–530.
+    https://proceedings.mlr.press/v120/coppens20a.html
+
     """
 
     def __init__(self, ellipsoid: Ellipsoid, data: np.ndarray, confidence: float,
@@ -28,7 +34,6 @@ class MomentDRO:
         # setter for mu0 and sigma0
         self._get_moments()
 
-        self.Rhat = None  # set by calling R_hat
         self.theta = None  # set by calling solve
 
     @property
@@ -46,74 +51,132 @@ class MomentDRO:
         :return: mu0, sigma0 as np arrays
         """
         mu0 = np.mean(self.data, axis=1)
-        sigma0 = np.cov(self.data, rowvar=True, bias=True) # + 1e-8 * np.eye(self.data.shape[0])
+        sigma0 = np.cov(self.data, rowvar=True, bias=True)  # + 1e-8 * np.eye(self.data.shape[0])
 
         return mu0, sigma0
 
-    def R_hat(self) -> None:
+    # def R_hat(self) -> None:
+    #     """
+    #     Calculates the R_hat value as defined in Delage and Ye (2010), Cor. 3. It gives the maximum weighted distance
+    #     from xi to the empirical mean.
+    #
+    #     :return: None. The R_hat value is stored in the object.
+    #     """
+    #     mu0, sigma0 = self._get_moments()
+    #     tau = cp.Variable()
+    #     _lambda = cp.Variable()
+    #     inv_sigma0 = np.linalg.solve(sigma0, np.eye(self.d))
+    #     inv_sigma0 = 0.5 * (inv_sigma0 + inv_sigma0.T)  # make sure it is symmetric
+    #     B = - inv_sigma0
+    #     b = cp.reshape(inv_sigma0 @ mu0, (self.d, 1))
+    #     beta = - mu0.T @ inv_sigma0 @ mu0 + tau
+    #     A, a, c = self.ellipsoid.A, self.ellipsoid.a, self.ellipsoid.c
+    #
+    #     M = cp.bmat([[B - _lambda * A, b - _lambda * a], [b.T - _lambda * a.T, beta - _lambda * c]])
+    #     constraints = [M >> 0, _lambda >= 0]
+    #
+    #     objective = cp.Minimize(tau)
+    #     prob = cp.Problem(objective, constraints)
+    #     prob.solve(solver=self.solver)
+    #
+    #     if prob.status != "optimal":
+    #         raise ValueError(f"Problem status: {prob.status}")
+    #
+    #     self.Rhat = np.sqrt(prob.value)
+    #
+    # def assert_m(self) -> int:
+    #     """
+    #     Assert that the data size is large enough. This checks the condition given by Delage and Ye (2010)
+    #     """
+    #     assert self.Rhat is not None, "R_hat is not set. Call R_hat() first."
+    #     delta_bar = 1 - np.sqrt(1 - self.confidence)
+    #     m1 = (self.Rhat ** 2 + 2) ** 2 * (2 + np.sqrt(2 * np.log(4 / delta_bar))) ** 2
+    #     m2 = ((8 + np.sqrt(32 * np.log(4 / delta_bar))) ** 2) / ((np.sqrt(self.Rhat + 4) - self.Rhat) ** 4)
+    #
+    #     return int(np.ceil(max(m1, m2)))
+
+    @staticmethod
+    def assert_m(p, q, sigma=1, epsilon=1 / 30) -> int:
         """
-        Calculates the R_hat value as defined in Delage and Ye (2010), Cor. 3. It gives the maximum weighted distance
-        from xi to the empirical mean.
-
-        :return: None. The R_hat value is stored in the object.
+        Returns the theoretically minimal data size for which the problem is solvable. This is based on the
+        theoretical results from Coppens, Schuurmans and Patrinos (2020) (Eq 11)
         """
-        mu0, sigma0 = self._get_moments()
-        tau = cp.Variable()
-        _lambda = cp.Variable()
-        inv_sigma0 = np.linalg.solve(sigma0, np.eye(self.d))
-        inv_sigma0 = 0.5 * (inv_sigma0 + inv_sigma0.T)  # make sure it is symmetric
-        B = - inv_sigma0
-        b = cp.reshape(inv_sigma0 @ mu0, (self.d, 1))
-        beta = - mu0.T @ inv_sigma0 @ mu0 + tau
-        A, a, c = self.ellipsoid.A, self.ellipsoid.a, self.ellipsoid.c
+        M1 = sigma ** 2 * np.sqrt(32 * q)
+        M2 = np.sqrt(32 * sigma ** 4 * q +
+                     8 * sigma ** 2 * (1 - 2 * epsilon) * q +
+                     4 * sigma ** 2 * (1 - 2 * epsilon) ** 2 * p)
 
-        M = cp.bmat([[B - _lambda * A, b - _lambda * a], [b.T - _lambda * a.T, beta - _lambda * c]])
-        constraints = [M >> 0, _lambda >= 0]
+        M = ((M1 + M2) / (2 * (1 - 2 * epsilon))) ** 2
 
-        objective = cp.Minimize(tau)
-        prob = cp.Problem(objective, constraints)
-        prob.solve(solver=self.solver)
+        return int(np.ceil(M))
 
-        if prob.status != "optimal":
-            raise ValueError(f"Problem status: {prob.status}")
-
-        self.Rhat = np.sqrt(prob.value)
-
-    def assert_m(self) -> int:
+    def get_parameters(self, confidence_level, sigma=1, epsilon=1 / 30):
         """
-        Assert that the data size is large enough. This checks the condition given by Delage and Ye (2010)
+        Get the parameters for the optimization problem. These are the confidence levels for the first and second moments
+        based on Coppens, Schuurmans and Patrinos (2020)
+        :param confidence_level: the confidence level for the optimization problem
+        :param sigma: the standard deviation of the noise (see Assumption 1)
+        :param epsilon: the epsilon value for the confidence level (see Thm 6)
+        :return: confidence radius for the first and second moments
         """
-        assert self.Rhat is not None, "R_hat is not set. Call R_hat() first."
-        delta_bar = 1 - np.sqrt(1 - self.confidence)
-        m1 = (self.Rhat ** 2 + 2) ** 2 * (2 + np.sqrt(2 * np.log(4 / delta_bar))) ** 2
-        m2 = ((8 + np.sqrt(32 * np.log(4 / delta_bar))) ** 2) / ((np.sqrt(self.Rhat + 4) - self.Rhat) ** 4)
+        assert 0 < confidence_level < 1, "Beta should be between 0 and 1"
+        assert 0 < epsilon < 1 / 2, "Epsilon should be between 0 and 1/2"
 
-        return int(np.ceil(max(m1, m2)))
+        q = self.d * np.log(1 + 1 / epsilon) + np.log(2 / confidence_level)  # Thm 6
+        p = self.d + 2 * np.sqrt(self.d * np.log(1 / confidence_level)) + 2 * np.log(1 / confidence_level)  # Thm 7
 
-    def get_constants(self) -> (float, float):
+        return p, q
+
+    # def get_constants(self) -> (float, float):
+    #     """
+    #     Get the constants for the optimization problem. These are
+    #     - gamma1: the confidence on the first moment
+    #     - gamma2: the confidence on the second moment
+    #     The formulas are as in Delage and Ye (2010), Cor. 3
+    #
+    #     :return: gamma1, gamma2
+    #     """
+    #     delta_bar = 1 - np.sqrt(1 - self.confidence)
+    #     # Delage and Ye, Cor. 3
+    #     # R_bar
+    #     M = max(self.m, self.assert_m())
+    #     temp = (2 + np.sqrt(2 * np.log(4 / delta_bar))) / np.sqrt(M)
+    #     R_bar = self.Rhat / np.sqrt(1 - (self.Rhat ** 2 + 2) * temp)
+    #     # alpha_bar and beta_bar
+    #     alpha_bar = (R_bar ** 2 / np.sqrt(M)) * (np.sqrt(1 - self.d / R_bar ** 4) + np.sqrt(np.log(4 / delta_bar)))
+    #     beta_bar = (R_bar ** 2 / M) * (2 + np.sqrt(2 * np.log(2 / delta_bar))) ** 2
+    #
+    #     # Delage and Ye, Eq. (15)
+    #     gamma1 = beta_bar / (1 - alpha_bar - beta_bar)
+    #     gamma2 = (1 + beta_bar) / (1 - alpha_bar - beta_bar)
+    #
+    #     return gamma1, gamma2
+
+    def get_constants(self, p, q, epsilon=1 / 30, confidence_level=0.05, sigma=1):
         """
-        Get the constants for the optimization problem. These are
-        - gamma1: the confidence on the first moment
-        - gamma2: the confidence on the second moment
-        The formulas are as in Delage and Ye (2010), Cor. 3
-
-        :return: gamma1, gamma2
+        Get the constants for the optimization problem. These are the confidence levels for the first and second moments
+        based on Coppens, Schuurmans and Patrinos (2020)
+        :param p: (see Thm 7)
+        :param q: (see Thm 6)
+        :param epsilon: the epsilon value for the confidence level (see Thm 6)
+        :param confidence_level: the confidence level for the optimization problem
+        :param sigma: the standard deviation (see Assumption 1)
+        :return: confidence radius for the first and second moments
         """
-        delta_bar = 1 - np.sqrt(1 - self.confidence)
-        # Delage and Ye, Cor. 3
-        # R_bar
-        M = max(self.m, self.assert_m())
-        temp = (2 + np.sqrt(2 * np.log(4 / delta_bar))) / np.sqrt(M)
-        R_bar = self.Rhat / np.sqrt(1 - (self.Rhat ** 2 + 2) * temp)
-        # alpha_bar and beta_bar
-        alpha_bar = (R_bar ** 2 / np.sqrt(M)) * (np.sqrt(1 - self.d / R_bar ** 4) + np.sqrt(np.log(4 / delta_bar)))
-        beta_bar = (R_bar ** 2 / M) * (2 + np.sqrt(2 * np.log(2 / delta_bar))) ** 2
+        assert 0 < epsilon < 1 / 2, "Epsilon should be between 0 and 1/2"
+        assert 0 < confidence_level < 1, "Confidence level should be between 0 and 1"
 
-        # Delage and Ye, Eq. (15)
-        gamma1 = beta_bar / (1 - alpha_bar - beta_bar)
-        gamma2 = (1 + beta_bar) / (1 - alpha_bar - beta_bar)
+        C = 300  # safety constant
+        M = max(self.m, self.assert_m(p, q) + C)
 
-        return gamma1, gamma2
+        t_sigma = (sigma ** 2) / (1 - 2 * epsilon) * (np.sqrt(32 * q / M) + 2 * q / M)  # Eq 10
+        t_mu = sigma ** 2 / M * p  # Thm 7
+
+        r_sigma = 1 / (1 - t_mu - t_sigma)
+        r_mu = t_mu / (1 - t_mu - t_sigma)
+
+        return r_mu, r_sigma / self.m  # due to the difference in the definition of the confidence regions
+
 
     @staticmethod
     def _loss_matrices(theta, cvxpy=False):
@@ -138,17 +201,19 @@ class MomentDRO:
         Solve the moment DRO problem. This function returns the optimal value for theta. It implements the
         optimization problem as in Delage and Ye (2010), Eq. (6)
         """
-        # step 1: calculate R_hat
-        self.R_hat()
+        # step 1: calculate p and q
+        p, q = self.get_parameters(self.confidence / 2)
+        # Note: Thms 6-7 give formulas for p(beta) and q(beta). We calculate b(beta/2) and a(beta/2) instead
+        # because these are the values we need later on (see Thm 8)
 
         # step 2: check if the data size is large enough
         if check_data:
-            if not self.m >= self.assert_m():
+            if not self.m >= self.assert_m(p, q):
                 print("Data size is not large enough. The problem may not be solvable.")
-                print(f"m: {self.m}, m_min: {self.assert_m()}")
+                print(f"m: {self.m}, m_min: {self.assert_m(p, q)}")
 
         # step 3: get the constants
-        gamma1, gamma2 = self.get_constants()
+        gamma1, gamma2 = self.get_constants(p, q, self.confidence)
         mu0, sigma0 = self._get_moments()
 
         # step 4: define variables
@@ -167,10 +232,10 @@ class MomentDRO:
 
         ################################
         # hier beginnen de problemen
-        # print(f"gamma1: {gamma1}, gamma2: {gamma2}")
+        print(f"gamma1: {gamma1}, gamma2: {gamma2}")
         # assert gamma1 > 0 and gamma2 > 0, "Constants are not positive."
-        # constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
-        constraints += self._constraint_8c(t, Q, q, 1000, 1000, sigma0, mu0)  # constraint (8b)
+        constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
+        # constraints += self._constraint_8c(t, Q, q, 1000, 1000, sigma0, mu0)  # constraint (8b)
         #       → met 10,10 werkt het wel voor lage dimensies. Andere getallen geven soms problemen (zoals unbounded)
         constraints += self._constraint_8b(_lambda, Q, q, theta, r)  # constraint (8c)
 
@@ -279,8 +344,8 @@ class MomentDRO:
 def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
-    n = 100
-    d = 50
+    n = 150
+    d = 25
     a, b = 0, 5
     assert a < b
     sigma = 2
@@ -292,7 +357,7 @@ def moment_dro_tester(seed):
                                                slope, scaling_factor=1.05)
 
     # test the MomentDRO class
-    dro = MomentDRO(ellipsoid, data, confidence=0.95, solver="MOSEK")
+    dro = MomentDRO(ellipsoid, data, confidence=0.05, solver="MOSEK")
     dro.solve(verbose=False)
     print(dro.theta)
 

@@ -9,7 +9,6 @@ import utils.multivariate_experiments as aux
 import pandas as pd
 from time import time
 from datetime import datetime
-from sklearn.decomposition import PCA
 from moment_dro import MomentDRO
 
 
@@ -251,14 +250,14 @@ def experiment2_loop(dimension, ellipsoid, generator, slope, a, b):
     return df_alpha, df_loss_0, df_loss_star, [loss_r, np.mean(test_loss_r_array)]
 
 
-def experiment3a(seed):
+def experiment3_2d(seed):
     """
-    Test the effect of rotating the LJ ellipsoid on the CADRO method
+    Test the effect of rotating the LJ ellipsoid on the CADRO method for the 2D case
     """
     # generate the data
-    d = 10
-    m = 150
-    sigma = 2
+    d = 2
+    m = 30
+    sigma = 1
     rico = 1
     nb_tries = 100
     a, b = -5, 5
@@ -288,7 +287,7 @@ def experiment3a(seed):
                                                                                                    1000, True)
     test_data = np.vstack([test_x, test_y])
     for angle in angles:
-        R = aux.rotation_matrix(d, angle, components = [1, 3])
+        R = aux.rotation_matrix(d, angle, components=[0, 1])
         # for higher dimensions, we do not need the shape and center matrices
         shape = R.T @ lj.shape @ R if lj.shape is not None else None
         center = R.T @ lj.center if lj.center is not None else None
@@ -343,7 +342,8 @@ def experiment3a(seed):
         aux.plot_loss_histograms(ax, test_loss_0_array, test_loss_star_array, test_loss_r_array[i], title=title,
                                  bins=20)
         plt.tight_layout()
-        plt.savefig("thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(np.rad2deg(angles[i]))) + f"d{d}.png")
+        plt.savefig(
+            "thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(np.rad2deg(angles[i]))) + f"d{d}.png")
         plt.show()
 
         print("theta_r", problem.theta_r)
@@ -375,6 +375,125 @@ def experiment3a(seed):
     plt.ylabel(r"$\ell(\theta_r)$")
     plt.grid()
     plt.tight_layout()
+    plt.savefig("thesis_figures/multivariate_ls/rotations/loss_angle_d" + str(d) + ".png")
+    plt.show()
+
+
+def experiment3_md(seed, d: int = 3):
+    """
+    Test the effect of rotating the LJ ellipsoid on the CADRO method for the 2D case
+    """
+    # generate the data
+    m = 40
+    sigma = 1
+    actual_rico = 1
+    actual_slope = actual_rico * np.ones((d - 1,))
+    nb_tries = 100
+    a, b = -5, 5
+    assert b > a
+    generator = np.random.default_rng(seed)
+
+    indices = range(-10, 11)
+
+    ellipsoids = []
+    ricos = []
+
+    for index in indices:
+        rico_rot = index / np.sqrt(d - 1)
+        slope_rot = rico_rot * np.ones((d - 1,))
+        ellipsoids.append(Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)),
+                                                         -2, 2, theta=slope_rot, scaling_factor=1.05))
+        ricos.append(rico_rot)
+
+    alpha_array = np.zeros((len(ellipsoids), nb_tries))
+    lambda_array = np.zeros((len(ellipsoids), nb_tries))
+    loss_r_array = np.zeros((len(ellipsoids)))
+    test_loss_r_array = np.zeros((len(ellipsoids)))
+
+    test_x = MDG.uniform_unit_hypercube(generator, d - 1, 1000)
+    test_y = np.array([np.dot(test_x[:, i], actual_slope) for i in range(1000)]) + \
+             MDG.normal_disturbance(generator, sigma, 1000, True)
+    test_data = np.vstack([test_x, test_y])
+
+    for i in range(len(ellipsoids)):
+        slope = ricos[i] * np.ones((d - 1,))
+        ellipsoid = ellipsoids[i]
+
+        test_loss_0_array = np.zeros(nb_tries)
+        test_loss_star_array = np.zeros(nb_tries)
+
+        # get the robust cost
+        robust_opt = RobustOptimization(ellipsoid)
+        robust_opt.solve_least_squares()
+        loss_r_array[i] = robust_opt.cost
+
+        for k in range(nb_tries):
+            # sample uniformly from the unit hypercube
+            x = MDG.uniform_unit_hypercube(generator, d - 1, m)
+            y = np.array([np.dot(x[:, i], actual_slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma,
+                                                                                                     m)
+            data = np.vstack([x, y])
+            MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
+
+            # solve the CADRO problem
+            problem = LeastSquaresCadro(data, ellipsoid, solver=cp.MOSEK)
+            problem.solve()
+
+            # collect the results
+            alpha_array[i, k] = problem.results["alpha"][0]
+            lambda_array[i, k] = problem.results["lambda"][0]
+            test_loss_0_array[k] = problem.test_loss(test_data, 'theta_0')
+            test_loss_star_array[k] = problem.test_loss(test_data, 'theta')
+
+            if k == 0:
+                test_loss_r_array[i] = problem.test_loss(test_data, 'theta_r')
+
+        # remove outliers: only keep the losses where the loss_0 is not too large
+        test_loss_0_array = test_loss_0_array[test_loss_0_array < 10 * np.median(test_loss_0_array)]
+        test_loss_star_array = test_loss_star_array[test_loss_star_array < 10 * np.median(test_loss_star_array)]
+
+        # make the plot for the loss histograms: overlaying histograms for loss_0 and loss_star
+        title = f"slope = {round(ricos[i], 2)}"
+        fig, ax = plt.subplots()
+        aux.plot_loss_histograms(ax, test_loss_0_array, test_loss_star_array, test_loss_r_array[i], title=title,
+                                 bins=30)
+        plt.tight_layout()
+        plt.savefig(
+            "thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(ricos[i], 2)) + f"d{d}.png")
+        plt.show()
+
+        print("theta_r", problem.theta_r)
+
+    # make the plot for the alphas: boxplot combined with scatterplot
+    fig, ax = plt.subplots(ncols=len(ellipsoids))
+    # set all axes to the same limits
+    max_limit = np.max(alpha_array)
+    min_limit = np.min(alpha_array)
+    for i in range(len(ellipsoids)):
+        aux.plot_alphas(ax[i], alpha_array[i, :], lambda_array[i, :], loss_r_array[i],
+                        title=f"slope = {round(ricos[i], 2)}",
+                        boxplot=True)
+        # log scale for y
+        ax[i].set_yscale('log')
+        ax[i].set_ylim([min_limit, max_limit])
+
+        if i > 0:
+            ax[i].set_yticks([])
+
+    plt.tight_layout()
+    plt.savefig(f"thesis_figures/multivariate_ls/rotations/alphas_d{d}.png")
+    plt.show()
+
+    # plot the robust test loss as a function of the angle
+    plt.figure()
+    plt.plot(ricos, test_loss_r_array, marker='o')
+    plt.xlabel(r"$\phi$ (degrees)")
+    plt.ylabel(r"$\ell(\theta_r)$")
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig("thesis_figures/multivariate_ls/rotations/loss_angle_d" + str(d) + ".png")
+    # plot a vertical line at the actual angle
+    plt.axvline(actual_rico, color='r', linestyle='--')
     plt.show()
 
 
@@ -562,7 +681,6 @@ def experiment5(seed):
                         dro = MomentDRO(ellipsoid, data, confidence=0.05, solver=cp.MOSEK)
                         theta_dro = dro.solve(check_data=False)
 
-
                         # fill in the distance arrays
                         dist_star_0[i, j, k] = np.linalg.norm(problem.results["theta"] - problem.results["theta_0"])
                         dist_star_r[i, j, k] = np.linalg.norm(problem.results["theta"] - theta_r)
@@ -650,13 +768,15 @@ if __name__ == '__main__':
     seed = 0
     # experiment1(seed)
     # experiment2(seed)
-    # experiment3a(seed)
+    # experiment3_2d(seed)
+    experiment3_md(seed, d=4)
     # experiment5(seed)
-    solvers = ['SCS', 'CVXOPT', 'CLARABEL', 'MOSEK']
-    dimensions_lists = [[5, 10, 15, 20],
-                        [5, 10, 15, 20, 25, 30, 35, 40, 100],
-                        [5, 10, 15, 20, 25, 30, 35, 40, 100],
-                        [5, 10, 15, 20, 25, 30, 35, 40, 100, 200, 500, 1000]]
 
-    for i in range(len(solvers)):
-        experiment4(seed, solvers[i], dimensions_lists[i])
+    # solvers = ['SCS', 'CVXOPT', 'CLARABEL', 'MOSEK']
+    # dimensions_lists = [[5, 10, 15, 20],
+    #                     [5, 10, 15, 20, 25, 30, 35, 40, 100],
+    #                     [5, 10, 15, 20, 25, 30, 35, 40, 100],
+    #                     [5, 10, 15, 20, 25, 30, 35, 40, 100, 200, 500, 1000]]
+    #
+    # for i in range(len(solvers)):
+    #     experiment4(seed, solvers[i], dimensions_lists[i])

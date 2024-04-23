@@ -269,85 +269,141 @@ def experiment3():
     plt.show()
 
 
-if __name__ == "__main__":
-    seed = 0
-    m = 40
-    a, b = 0, 1
-    nb_tries = 100
-    plt.rcParams.update({'font.size': 15})
-    interpolation = "chebyshev"
-    # bookkeeping for experiment 2
-    results = pd.DataFrame(columns=["function", "collapse_dim_mean", "collapse_dim_std", "collapse_dim_inf",
-                                    "test_loss_0_p25", "test_loss_0_median", "test_loss_0_p75",
-                                    "test_loss_r_p25", "test_loss_r_median", "test_loss_r_p75"])
-
-    n = 4  # number of basis functions
-    d = n + 1
-    # basis functions
-    # sin(n * pi * x), n=1,..,d-1
+def experiment4(seed):
+    """
+    For a two-dimensional basis, plot the points in the feature space, together with the bounding box.
+    """
     basis_functions = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
-    # trig function
-    f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
-    f_min, f_max = -1.5, 1.5
-    phi_min, phi_max = -1, 1
+    # basis_functions = lambda x, i: x ** (i+1)
+    m = 1000
+    a, b = -1, 1
     sigma = 0.25
+    x_long = np.linspace(a, b, 1000)
+    f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
+    f_min, f_max = np.min(f(x_long)) - 2 * sigma, np.max(f(x_long)) + 2 * sigma
+    phi_min, phi_max = -1, 1
 
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
-                "trigonometric", nodes=interpolation)
+    x = np.linspace(a, b, m)
+    generator = np.random.default_rng(seed)
+    y = f(x) + sigma * generator.standard_normal(len(x))
+    y = np.clip(y, f_min, f_max)
 
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
-                          "trigonometric", results, nb_tries, nodes=interpolation)
+    # create 3D plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    # plot the points
+    A = ls_matrix(x, y, basis_functions, 3)
+    ax.scatter(A[1, :], A[2, :], A[3, :], color='blue', marker='.')
+    # plot the bounding box
+    for i in range(1, 4):
+        for j in range(1, 4):
+            for k in range(1, 4):
+                ax.plot([phi_min, phi_min, phi_max, phi_max, phi_min],
+                           [phi_min, phi_max, phi_max, phi_min, phi_min],
+                           [f_min, f_min, f_min, f_min, f_min], color='red')
+                ax.plot([phi_min, phi_min, phi_max, phi_max, phi_min],
+                           [phi_min, phi_max, phi_max, phi_min, phi_min],
+                           [f_max, f_max, f_max, f_max, f_max], color='red')
+                ax.plot([phi_min, phi_min, phi_min, phi_min, phi_min],
+                           [phi_min, phi_max, phi_max, phi_min, phi_min],
+                           [f_min, f_min, f_max, f_max, f_min], color='red')
+                ax.plot([phi_max, phi_max, phi_max, phi_max, phi_max],
+                           [phi_min, phi_max, phi_max, phi_min, phi_min],
+                           [f_min, f_min, f_max, f_max, f_min], color='red')
+                ax.plot([phi_min, phi_min, phi_max, phi_max, phi_min],
+                           [phi_min, phi_min, phi_min, phi_min, phi_min],
+                           [f_min, f_max, f_max, f_min, f_min], color='red')
+                ax.plot([phi_min, phi_min, phi_max, phi_max, phi_min],
+                           [phi_max, phi_max, phi_max, phi_max, phi_max],
+                           [f_min, f_max, f_max, f_min, f_min], color='red')
 
-    # hat function
-    f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
-    f_min, f_max = -0.5, 1.5
+    ax.set_xlabel(r"$\phi_1$")
+    ax.set_ylabel(r"$\phi_2$")
+    ax.set_zlabel(r"$f$")
+    plt.show()
 
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "hat",
-                          results, nb_tries, nodes=interpolation)
 
-    # monomial basis functions
-    basis_functions = lambda x, i: x ** i
-    f = lambda x: 500 * (x - 0.25) * (x - 0.75) ** 2 * (x - 0.05) * (x - 1)
-    f_min, f_max = -3.5, 1.5
-    phi_min, phi_max = 0, 1
-    sigma = 1
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
-                "polynomial", nodes=interpolation)
+if __name__ == "__main__":
+    # seed = 0
+    # m = 40
+    # a, b = 0, 1
+    # nb_tries = 100
+    # plt.rcParams.update({'font.size': 15})
+    # interpolation = "chebyshev"
+    # # bookkeeping for experiment 2
+    # results = pd.DataFrame(columns=["function", "collapse_dim_mean", "collapse_dim_std", "collapse_dim_inf",
+    #                                 "test_loss_0_p25", "test_loss_0_median", "test_loss_0_p75",
+    #                                 "test_loss_r_p25", "test_loss_r_median", "test_loss_r_p75"])
+    #
+    # n = 4  # number of basis functions
+    # d = n + 1
+    # # basis functions
+    # # sin(n * pi * x), n=1,..,d-1
+    # basis_functions = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
+    # # trig function
+    # f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
+    # f_min, f_max = -1.5, 1.5
+    # phi_min, phi_max = -1, 1
+    # sigma = 0.25
+    #
+    # experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+    #             "trigonometric", nodes=interpolation)
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+    #                       "trigonometric", results, nb_tries, nodes=interpolation)
+    #
+    # # hat function
+    # f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
+    # f_min, f_max = -0.5, 1.5
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "hat",
+    #                       results, nb_tries, nodes=interpolation)
+    #
+    # # monomial basis functions
+    # basis_functions = lambda x, i: x ** i
+    # f = lambda x: 500 * (x - 0.25) * (x - 0.75) ** 2 * (x - 0.05) * (x - 1)
+    # f_min, f_max = -3.5, 1.5
+    # phi_min, phi_max = 0, 1
+    # sigma = 1
+    # experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+    #             "polynomial", nodes=interpolation)
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial",
+    #                       results, nb_tries, nodes=interpolation)
+    #
+    # f = lambda x: np.exp(- x ** 2)
+    # f_min, f_max = 0, 1.5
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "gaussian",
+    #                       results, nb_tries, nodes=interpolation)
+    #
+    # # negative exponential basis functions
+    # basis_functions = lambda x, i: np.exp(-i * x)
+    # f = lambda x: 1 / (1 + 25 * x ** 2)
+    # f_min, f_max = -0.5, 1.5
+    # phi_min, phi_max = 0, 1
+    # sigma = 0.1
+    # experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+    #             "exponential", nodes=interpolation)
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "rational",
+    #                       results, nb_tries, nodes=interpolation)
+    #
+    # # exponentials
+    # f = lambda x: 5 * np.exp(-x) + np.exp(-2 * x) + 0.5 * np.exp(-5 * x)
+    # f_min, f_max = 1.5, 7
+    # phi_min, phi_max = 0, 1
+    # sigma = 0.1
+    #
+    # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponentials",
+    #                       results, nb_tries, nodes=interpolation)
+    #
+    # # round all numbers to two decimal places
+    # print(results)
+    # results.to_latex("results.txt", float_format="%.2f")
+    #
+    # plt.rcParams.update({'font.size': 10})
+    #
+    # # experiment3()
 
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "polynomial",
-                          results, nb_tries, nodes=interpolation)
-
-    f = lambda x: np.exp(- x ** 2)
-    f_min, f_max = 0, 1.5
-
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "gaussian",
-                          results, nb_tries, nodes=interpolation)
-
-    # negative exponential basis functions
-    basis_functions = lambda x, i: np.exp(-i * x)
-    f = lambda x: 1 / (1 + 25 * x ** 2)
-    f_min, f_max = -0.5, 1.5
-    phi_min, phi_max = 0, 1
-    sigma = 0.1
-    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
-                "exponential", nodes=interpolation)
-
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "rational",
-                          results, nb_tries, nodes=interpolation)
-
-    # exponentials
-    f = lambda x: 5 * np.exp(-x) + np.exp(-2 * x) + 0.5 * np.exp(-5 * x)
-    f_min, f_max = 1.5, 7
-    phi_min, phi_max = 0, 1
-    sigma = 0.1
-
-    results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "exponentials",
-                          results, nb_tries, nodes=interpolation)
-
-    # round all numbers to two decimal places
-    print(results)
-    results.to_latex("results.txt", float_format="%.2f")
-
-    plt.rcParams.update({'font.size': 10})
-
-    # experiment3()
+    experiment4(0)
