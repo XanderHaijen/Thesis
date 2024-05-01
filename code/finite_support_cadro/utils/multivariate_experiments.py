@@ -172,3 +172,18 @@ def rotation_matrix(d, theta, components: list):
     R[components[0], components[1]] = -np.sin(theta)
     R[components[1], components[0]] = np.sin(theta)
     return R
+
+
+def subgaussian_parameter(d, a, b, ubw, lbw, slope: np.ndarray = None, C=None):
+
+    if C is None and slope is not None:
+        slope = slope**2 + 1
+        C = np.sum(slope)
+    if C is None and slope is None:
+        raise ValueError("Either C or slope should be provided")
+
+    delta_w = ubw - lbw
+    sigma = ((b - a) ** 2 * C + delta_w ** 2)
+    sigma = np.sqrt(sigma) / 2
+
+    return sigma

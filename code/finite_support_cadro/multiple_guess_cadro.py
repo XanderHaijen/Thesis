@@ -6,6 +6,7 @@ from robust_optimization import RobustOptimization
 from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 import pandas as pd
+from datetime import datetime
 
 
 def experiment1(seed):
@@ -177,6 +178,7 @@ def experiment3_loop(ellipsoid, type, ms, sigmas, nb_tries, rico, seed, excel=Tr
     test_data_gen = ScalarDataGenerator(x_test, seed)
 
     for k, m in enumerate(ms):
+        print(f"{datetime.now()} - {ellipsoid.type} - m = {m}")
         x_train = np.linspace(0, 1, m)
         data_gen = ScalarDataGenerator(x_train, seed)
         for i, sigma in enumerate(sigmas):
@@ -328,6 +330,15 @@ def experiment3_loop(ellipsoid, type, ms, sigmas, nb_tries, rico, seed, excel=Tr
             loss_star_df.to_excel(writer, sheet_name="loss_star")
             writer.close()
 
+        # save to latex tables
+        theta_star_df.to_latex("thesis_figures/1d_linreg/{}_theta_star.tex".format(type))
+        theta_0_df.to_latex("thesis_figures/1d_linreg/{}_theta_0.tex".format(type))
+        theta_r_df.to_latex("thesis_figures/1d_linreg/{}_theta_r.tex".format(type))
+        alpha_df.to_latex("thesis_figures/1d_linreg/{}_alpha.tex".format(type))
+        collapses_df.to_latex("thesis_figures/1d_linreg/{}_collapses.tex".format(type))
+        loss_0_df.to_latex("thesis_figures/1d_linreg/{}_loss_0.tex".format(type))
+        loss_star_df.to_latex("thesis_figures/1d_linreg/{}_loss_star.tex".format(type))
+
 
 def experiment4(seed):
     """
@@ -342,14 +353,14 @@ def experiment4(seed):
     data_gen = ScalarDataGenerator(x_ellipse, seed)
     y_ellipse = data_gen.generate_linear_norm_disturbance(0, sigma, 3, outliers=True)
     data_ellipse = np.vstack([x_ellipse, y_ellipse])
-    lj_ellipsoid = Ellipsoid.lj_ellipsoid(data_ellipse, scaling_factor=2)
+    # lj_ellipsoid = Ellipsoid.lj_ellipsoid(data_ellipse, scaling_factor=2)
     circle = Ellipsoid.smallest_enclosing_sphere(data_ellipse)
 
     x = np.linspace(0, 1, m)
     data_gen = ScalarDataGenerator(x, seed)
     data_gen.generate_linear_norm_disturbance(0, sigma, 3, outliers=True)
-    data_gen.contain_within_ellipse(lj_ellipsoid)  # activate for LJ ellipsoid
-    # data_gen.contain_within_ellipse(circle)
+    # data_gen.contain_within_ellipse(lj_ellipsoid)  # activate for LJ ellipsoid
+    data_gen.contain_within_ellipse(circle)
     data = np.vstack([x, data_gen.y])
 
     x_test = np.linspace(0, 1, 1000)
@@ -358,8 +369,8 @@ def experiment4(seed):
     test_data = np.vstack([x_test, test_data_gen.y])
 
     theta = np.linspace(-2.5, 4.5, 130)
-    problem = CADRO1DLinearRegression(data, lj_ellipsoid)  # activate for LJ ellipsoid
-    # problem = CADRO1DLinearRegression(data, circle)
+    # problem = CADRO1DLinearRegression(data, lj_ellipsoid)  # activate for LJ ellipsoid
+    problem = CADRO1DLinearRegression(data, circle)
     objective = np.zeros(len(theta))
     test_loss = np.zeros(len(theta))
 
@@ -388,14 +399,17 @@ def experiment4(seed):
     plt.axvline(x=theta_r, linestyle='--', color='r')
     plt.axvline(x=theta_star, linestyle='--', color='g')
 
+    # plt.xticks([theta_1, theta_2, theta_r, theta_star] + [-2, -1, 0, 1, 2, 3, 4],
+    #            [r"         $\theta_1,\theta^\star$", r"$\theta_2$", r"$\theta_r$", None] + [None, -1, 0, 1, 2, 3, None])
+
     plt.xticks([theta_1, theta_2, theta_r, theta_star] + [-2, -1, 0, 1, 2, 3, 4],
-               [r"     $\theta_1$", r"$\theta_2$", r"$\theta_r$", r"$\theta^*$"] + [-2, -1, 0, None, 2, 3, None])
+               [r"$\theta_1$", r"$\theta_2$", r"$\theta_r, \theta^\star$", None] + [None, -1, None, 1, 2, 3, None])
 
     plt.legend()
     plt.xlabel(r"$\theta$")
     plt.ylabel(r"$\ell(\theta, \xi)$")
-    plt.title("Loss function for LJ ellipsoid")
-    # plt.title("Loss function for circular support")
+    # plt.title("Loss function for LJ ellipsoid")
+    plt.title("Loss function for circular support")
     plt.grid()
     plt.tight_layout()
     plt.show()
@@ -404,5 +418,5 @@ def experiment4(seed):
 if __name__ == "__main__":
     seed = 42
     # experiment1(seed)
-    experiment3(seed)
-    # experiment4(seed)
+    # experiment3(seed)
+    experiment4(seed)

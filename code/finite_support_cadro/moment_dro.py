@@ -1,7 +1,7 @@
 import numpy as np
 import cvxpy as cp
 from ellipsoids import Ellipsoid
-
+import utils.multivariate_experiments as aux
 
 class MomentDRO:
     """
@@ -19,7 +19,7 @@ class MomentDRO:
 
     """
 
-    def __init__(self, ellipsoid: Ellipsoid, data: np.ndarray, confidence: float,
+    def __init__(self, ellipsoid: Ellipsoid, data: np.ndarray, confidence: float, sigmaG: float = 1.0,
                  solver: str = "MOSEK"):
         """
         :param ellipsoid: the support set of the distribution
@@ -33,6 +33,7 @@ class MomentDRO:
         self.solver = solver
         # setter for mu0 and sigma0
         self._get_moments()
+        self.sigmaG = sigmaG
 
         self.theta = None  # set by calling solve
 
@@ -43,6 +44,16 @@ class MomentDRO:
     @property
     def sigma0(self):
         return self._get_moments()[1]
+
+    def set_sigma(self):
+        """
+        Calculate the empirical covariance of the data
+        """
+        A = self.ellipsoid.shape
+        # largest eigenvalue of A
+        eigval, _ = np.linalg.eigh(A)
+        lambda_max = np.max(eigval)
+        return lambda_max
 
     def _get_moments(self) -> (np.ndarray, np.ndarray):
         """
@@ -95,12 +106,12 @@ class MomentDRO:
     #
     #     return int(np.ceil(max(m1, m2)))
 
-    @staticmethod
-    def assert_m(p, q, sigma=1, epsilon=1 / 30) -> int:
+    def assert_m(self, p, q, epsilon=1 / 30) -> int:
         """
         Returns the theoretically minimal data size for which the problem is solvable. This is based on the
         theoretical results from Coppens, Schuurmans and Patrinos (2020) (Eq 11)
         """
+        sigma = self.sigmaG
         M1 = sigma ** 2 * np.sqrt(32 * q)
         M2 = np.sqrt(32 * sigma ** 4 * q +
                      8 * sigma ** 2 * (1 - 2 * epsilon) * q +
@@ -110,7 +121,7 @@ class MomentDRO:
 
         return int(np.ceil(M))
 
-    def get_parameters(self, confidence_level, sigma=1, epsilon=1 / 30):
+    def get_parameters(self, confidence_level, epsilon=1 / 30):
         """
         Get the parameters for the optimization problem. These are the confidence levels for the first and second moments
         based on Coppens, Schuurmans and Patrinos (2020)
@@ -152,7 +163,7 @@ class MomentDRO:
     #
     #     return gamma1, gamma2
 
-    def get_constants(self, p, q, epsilon=1 / 30, confidence_level=0.05, sigma=1):
+    def get_constants(self, p, q, epsilon=1 / 30, confidence_level=0.05):
         """
         Get the constants for the optimization problem. These are the confidence levels for the first and second moments
         based on Coppens, Schuurmans and Patrinos (2020)
@@ -166,8 +177,9 @@ class MomentDRO:
         assert 0 < epsilon < 1 / 2, "Epsilon should be between 0 and 1/2"
         assert 0 < confidence_level < 1, "Confidence level should be between 0 and 1"
 
-        C = 300  # safety constant
-        M = max(self.m, self.assert_m(p, q) + C)
+        C = 1.1  # safety factor
+        M = max(self.m, int(self.assert_m(p, q) * C))
+        sigma = self.sigmaG
 
         t_sigma = (sigma ** 2) / (1 - 2 * epsilon) * (np.sqrt(32 * q / M) + 2 * q / M)  # Eq 10
         t_mu = sigma ** 2 / M * p  # Thm 7
@@ -175,8 +187,7 @@ class MomentDRO:
         r_sigma = 1 / (1 - t_mu - t_sigma)
         r_mu = t_mu / (1 - t_mu - t_sigma)
 
-        return r_mu, r_sigma / self.m  # due to the difference in the definition of the confidence regions
-
+        return r_mu, r_sigma
 
     @staticmethod
     def _loss_matrices(theta, cvxpy=False):
@@ -229,14 +240,7 @@ class MomentDRO:
 
         # constraints
         constraints = [Q >> 0 * np.eye(Q.shape[0])]  # constraint (8d)
-
-        ################################
-        # hier beginnen de problemen
-        print(f"gamma1: {gamma1}, gamma2: {gamma2}")
-        # assert gamma1 > 0 and gamma2 > 0, "Constants are not positive."
         constraints += self._constraint_8c(t, Q, q, gamma1, gamma2, sigma0, mu0)  # constraint (8b)
-        # constraints += self._constraint_8c(t, Q, q, 1000, 1000, sigma0, mu0)  # constraint (8b)
-        #       → met 10,10 werkt het wel voor lage dimensies. Andere getallen geven soms problemen (zoals unbounded)
         constraints += self._constraint_8b(_lambda, Q, q, theta, r)  # constraint (8c)
 
         # solve the problem
@@ -344,11 +348,15 @@ class MomentDRO:
 def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
-    n = 150
-    d = 25
+    n = 50
+    d = 20
     a, b = 0, 5
     assert a < b
     sigma = 2
+
+    # set SigmaG
+    SigmaG = aux.subgaussian_parameter(d, a, b, -2, 2, np.ones((d - 1, )))
+
     slope = np.ones((d - 1,))
     train_x = generator.uniform(a, b, (n, d - 1))
     train_y = np.array([np.dot(slope, x) for x in train_x]) + sigma * generator.standard_normal(n)
@@ -357,7 +365,7 @@ def moment_dro_tester(seed):
                                                slope, scaling_factor=1.05)
 
     # test the MomentDRO class
-    dro = MomentDRO(ellipsoid, data, confidence=0.05, solver="MOSEK")
+    dro = MomentDRO(ellipsoid, data, confidence=0.05, sigmaG=SigmaG, solver="MOSEK")
     dro.solve(verbose=False)
     print(dro.theta)
 

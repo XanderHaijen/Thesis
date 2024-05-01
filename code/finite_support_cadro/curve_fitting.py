@@ -320,6 +320,7 @@ def experiment4(seed):
     ax.set_xlabel(r"$\phi_1$")
     ax.set_ylabel(r"$\phi_2$")
     ax.set_zlabel(r"$f$")
+    plt.savefig("thesis_figures/curve_fitting/experiment4.png")
     plt.show()
 
 

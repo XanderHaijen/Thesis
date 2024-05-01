@@ -20,13 +20,9 @@ class Ellipsoid:
         self.circle = (n == 2 and np.array_equal(A, - np.eye(2)))
         self.type = kind
 
-        # shape and center for plotting (optional)
-        if self.dim == 2 or self.dim == 3:
-            self.shape = shape
-            self.center = center
-        else:
-            self.shape = None
-            self.center = None
+        # geometric parametrization
+        self.shape = shape
+        self.center = center
 
     @staticmethod
     def is_nsd(A):

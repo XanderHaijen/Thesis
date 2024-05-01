@@ -4,21 +4,28 @@ from continuous_cadro import ContinuousCADRO
 import numpy as np
 from ellipsoids import Ellipsoid
 import cvxpy as cp
+import study_minimal
 
 
-class LeastSquaresCadro(ContinuousCADRO):
+class StochasticDominanceCADRO(ContinuousCADRO):
     """
-    CADRO for least squares objective function:
+    Stochastic Dominance CADRO for least squares objective function:
     J(theta) = || A theta - b ||_2^2
     """
 
-    def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid, solver=cp.MOSEK, split=None, seed=0):
+    def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid,
+                 nb_thresholds: int = 50, threshold_type: str = 'equidistant',
+                 solver=cp.MOSEK, split=None, seed=0):
         """
         :param data: (d, m) matrix containing the data
         :param ellipsoid: Ellipsoid object
         :param split: split the data into two parts. If None, the default split is used.
         """
         super().__init__(data, ellipsoid, solver, split, seed)
+        self.nb_thresholds = nb_thresholds
+        self.threshold_type = threshold_type
+        self.thresholds = None # thresholds for the stochastic dominance constraints
+
 
     @property
     def loss(self):
@@ -49,11 +56,8 @@ class LeastSquaresCadro(ContinuousCADRO):
         """
         if self.theta_0 is None:
             raise ValueError("theta_0 has not been set yet.")
-        elif index is None:
-            # TODO implement taking mean
-            pass
         else:
-            return self._loss_function(self.theta_0[index], self.data)
+            return self._loss_function(self.theta_0[0], self.data)
 
     def set_theta_r(self):
         """
@@ -62,6 +66,17 @@ class LeastSquaresCadro(ContinuousCADRO):
         robust_opt = RobustOptimization(self.ellipsoid, solver=self.solver)
         robust_opt.solve_least_squares()
         self.theta_r = np.reshape(robust_opt.theta, (-1, 1))
+
+    def set_theta_0(self, theta_0: np.ndarray = None, nb_theta_0: int = 1):
+        if nb_theta_0 != 1:
+            raise ValueError("nb_theta_0 must be 1 for Stochastic Dominance CADRO.")
+
+        if theta_0 is None:
+            train_data_indices = np.arange(0, self.split)
+            self._find_theta0(train_data_indices, 1)
+        else:
+            assert len(theta_0) == 1
+            self.theta_0 = theta_0
 
     def _find_theta0_batch(self, data_batch_indices: np.ndarray):
         """
@@ -122,6 +137,40 @@ class LeastSquaresCadro(ContinuousCADRO):
         else:
             return cp.square(cp.matmul(cp.transpose(theta), x) - y)
 
+    def calibrate(self, confidence_level):
+        """
+        Calibrate the ellipsoid for the given confidence level.
+        :param confidence_level: the confidence level for the ellipsoid
+        """
+        if self.theta_0 is None:
+            raise ValueError("theta_0 has not been set yet.")
+
+        self.alpha = np.zeros(self.nb_thresholds)
+
+        if self.thresholds is None:
+            self.thresholds = self._compute_thresholds(self.nb_thresholds, self.threshold_type)
+
+        for i, threshold in enumerate(self.thresholds):
+            self.alpha[i] = self._set_alpha(threshold, confidence_level)
+
+    def _set_alpha(self, threshold, confidence_level, asym_cutoff: int = 80):
+        m_cal = self.data.shape[1] - self.split
+        method = "asymptotic" if m_cal > asym_cutoff else 'brentq'
+        calibration = study_minimal.calibrate(length=m_cal, method=method, level=confidence_level,
+                                              full_output=True)
+        gamma = calibration.info['radius']
+        kappa = int(np.ceil(m_cal * gamma))
+
+        # function phi_i(theta_0, x) = max(0, l(theta_0, x) - threshold_i)
+        eta = np.array([self._scalar_loss(self.theta_0, self.data[:-1, i], self.data[-1, i]) - threshold
+                        if self._scalar_loss(self.theta_0, self.data[:-1, i], self.data[-1, i]) > threshold
+                        else 0 for i in range(self.data.shape[1])])
+
+        eta.sort(axis=0)
+        eta_bar = self._eta_bar()
+        alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
+        return alpha
+
     def _find_theta_star(self, theta=None):
         """
         Solve the multivariate least squares problem using the CADRO method.
@@ -133,16 +182,17 @@ class LeastSquaresCadro(ContinuousCADRO):
         self.theta = cp.Variable(shape=(self.data.shape[0] - 1, 1)) if theta is None else theta
         if theta is not None:
             assert theta.shape == (self.data.shape[0] - 1, 1)
-        self.lambda_ = cp.Variable(len(self.theta_0))
+        self.lambda_ = cp.Variable(self.nb_thresholds)
         self.tau = cp.Variable(1)
-        self.gamma = cp.Variable(len(self.theta_0))
+        self.gamma = cp.Variable(3 * self.nb_thresholds)
 
-        objective = cp.Minimize(self.alpha * self.lambda_ + self.tau)
+        self.thresholds = self._compute_thresholds(self.nb_thresholds, self.threshold_type)
+
+        objective = cp.Minimize(self.tau + cp.sum(self.lambda_ * self.alpha))
         constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + \
                       [gamma >= 0 for gamma in self.gamma]
 
-        for i in range(len(self.theta_0)):
-            constraints += self._lmi_constraint(i)
+        constraints += self.stochastic_dominance_constraints()
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=self.solver)
@@ -158,26 +208,47 @@ class LeastSquaresCadro(ContinuousCADRO):
         if isinstance(self.theta, cp.Variable):
             self.theta = self.theta.value[:, 0]
 
-    def _lmi_constraint(self, index: int = 0) -> list:
+    def stochastic_dominance_constraints(self):
         """
-        Returns the LMI constraint for the given index in cvxpy format.
-        TODO update the constraint to use sum instead of many constraints
-        :param index: index of the theta_0 to use
-        :return: a list containing the LMI constraint
+        Return the stochastic dominance constraints for the optimization problem.
+        :return: a list containing the stochastic dominance constraints
         """
-        theta_i = self.theta_0[index]
-        lambda_i = self.lambda_[index]
-        gamma_i = self.gamma[index]
-        B_i, _, _ = self._loss_matrices(theta_i, cvxpy=True)
+        constraints = []
+
+        B0, b0, beta0 = self._loss_matrices(self.theta_0[0], cvxpy=True)
+        A, a, c = self.ellipsoid.A, self.ellipsoid.a, self.ellipsoid.c
+
         ext = cp.vstack([-1, 0])
         theta_vector = cp.vstack([self.theta, ext])
-        A_11 = lambda_i * B_i - gamma_i * self.ellipsoid.A
-        A_12 = gamma_i * self.ellipsoid.a
-        A_22 = self.tau - gamma_i * self.ellipsoid.c
-        A_22 = cp.reshape(A_22, (1, 1))
-        A = cp.bmat([[A_11, A_12], [cp.transpose(A_12), A_22]])
-        M = cp.bmat([[A, theta_vector], [theta_vector.T, cp.reshape(1, (1, 1))]])
-        return [M >> 0]
+
+        for i in range(0, self.nb_thresholds):
+            # we have
+            # A_bar - sum_j=1^3 gamma_ij * B_bar_j >= 0
+
+            # 1. construct A_bar
+            # A_bar = [[M_bar, Theta], [Theta^T, 1]]
+            M_bar_11 = B0 * cp.sum(self.lambda_[:i]) if i > 0 \
+                else np.zeros((self.data.shape[0], self.data.shape[0]))
+            M_bar_12 = b0 * cp.sum(self.lambda_[:i]) if i > 0 \
+                else np.zeros((self.data.shape[0], 1))
+            M_bar_21 = cp.transpose(M_bar_12)
+            M_bar_22 = cp.sum(self.lambda_[:i] * (beta0 - self.thresholds[:i])) + self.tau if i > 0 \
+                else self.tau
+            M_bar = cp.bmat([[M_bar_11, M_bar_12], [M_bar_21, cp.reshape(M_bar_22, (1, 1))]])
+
+            # 2. construct B_bars
+            v_next = self.thresholds[i + 1] if i < self.nb_thresholds - 1 else self._eta_bar()
+            B_bar_1 = cp.bmat([[A, a], [cp.transpose(a), c]])
+            B_bar_2 = cp.bmat([[B0, b0], [cp.transpose(b0), cp.reshape(beta0 - self.thresholds[i], (1,1))]])
+            B_bar_3 = cp.bmat([[-B0, -b0], [-cp.transpose(b0), cp.reshape(-beta0 + v_next, (1, 1))]])
+            B_Bar = - self.gamma[3 * i] * B_bar_1 - self.gamma[3 * i + 1] * B_bar_2 - self.gamma[3 * i + 2] * B_bar_3
+
+            # 3. construct the constraint
+            C = M_bar + B_Bar
+            X = cp.bmat([[C, theta_vector], [cp.transpose(theta_vector), cp.reshape(1, (1, 1))]])
+            constraints += [X >> 0]
+
+        return constraints
 
     def test_loss(self, test_data: np.ndarray, type: str = 'theta', index: int = 0) -> float:
         """
@@ -214,3 +285,11 @@ class LeastSquaresCadro(ContinuousCADRO):
         else:
             theta_ext = np.vstack([theta, -1.0])
             return theta_ext @ theta_ext.T, np.zeros((self.data.shape[0], 1)), 0
+
+    def _compute_thresholds(self, nb_thresholds, threshold_type):
+        min_threshold = 0
+        max_threshold = self._eta_bar()
+        if threshold_type == 'equidistant':
+            return np.linspace(min_threshold, max_threshold, nb_thresholds)
+        else:
+            raise ValueError("Invalid threshold_type")

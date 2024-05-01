@@ -40,6 +40,8 @@ class ContinuousCADRO:
         self.theta = None
         self.theta_r = None
 
+        self.__eta_bar = None
+
     @property
     def results(self):
         """
@@ -226,36 +228,46 @@ class ContinuousCADRO:
     def _eta_bar(self, index: int = 0, safety: int = 100):
         """
         Calculate eta_bar for the given index. Eta_bar is the worst case loss for the given theta_0.
+
+        Note: this function only calculates the value once and then stores it in the object. Use reset() to recalculate.
+
         :param index: index of theta_0 to use
         :return: eta_bar as a float
         """
-        B, b, beta = self._loss_matrices(theta=self.theta_0[index], cvxpy=True)
-        _tau = cp.Variable(1)
-        _lambda = cp.Variable(1)
-        M11 = - B - _lambda * self.ellipsoid.A
-        M12 = - b - _lambda * self.ellipsoid.a
-        M22 = - beta - _lambda * self.ellipsoid.c + _tau
-        M22 = cp.reshape(M22, (1, 1))
-        M = cp.bmat([[M11, M12], [M12.T, M22]])
-        constraints = [M >> 0, _lambda >= 0]
-        objective = cp.Minimize(_tau)
-        problem = cp.Problem(objective, constraints)
-        infeasible = False
-        try:
-            problem.solve(solver=self.solver)
-        except cp.error.SolverError:
-            infeasible = True
+        if self.__eta_bar is None:
+            B, b, beta = self._loss_matrices(theta=self.theta_0[index], cvxpy=True)
+            _tau = cp.Variable(1)
+            _lambda = cp.Variable(1)
+            M11 = - B - _lambda * self.ellipsoid.A
+            M12 = - b - _lambda * self.ellipsoid.a
+            M22 = - beta - _lambda * self.ellipsoid.c + _tau
+            M22 = cp.reshape(M22, (1, 1))
+            M = cp.bmat([[M11, M12], [M12.T, M22]])
+            constraints = [M >> 0, _lambda >= 0]
+            objective = cp.Minimize(_tau)
+            problem = cp.Problem(objective, constraints)
+            infeasible = False
+            try:
+                problem.solve(solver=self.solver)
+            except cp.error.SolverError:
+                infeasible = True
 
-        if problem.status == cp.INFEASIBLE or infeasible:
-            print("Infeasible problem for eta_bar. Using sample-based approach.")
-            # construct the loss for all points in training and calibration data
-            loss = np.array([self._scalar_loss(self.theta_0[index], self.data[0, i], self.data[1:, i])
-                             for i in range(self.data.shape[1])])
-            eta_bar = safety * np.max(loss)
-            return eta_bar
-        else:
-            eta_bar = _tau.value[0]
-            return eta_bar
+            if problem.status == cp.INFEASIBLE or infeasible:
+                print("Infeasible problem for eta_bar. Using sample-based approach.")
+                # construct the loss for all points in training and calibration data
+                loss = np.array([self._scalar_loss(self.theta_0[index], self.data[0, i], self.data[1:, i])
+                                 for i in range(self.data.shape[1])])
+                eta_bar = safety * np.max(loss)
+                if index == 0:
+                    self.__eta_bar = eta_bar
+                return eta_bar
+            else:
+                eta_bar = _tau.value[0]
+                if index == 0:
+                    self.__eta_bar = eta_bar
+                return eta_bar
+        elif index == 0:
+            return self.__eta_bar
 
     def reset(self):
         """
@@ -268,6 +280,7 @@ class ContinuousCADRO:
         self.tau = None
         self.gamma = None
         self.theta = None
+        self._eta_bar = None
 
     @abstractmethod
     def test_loss(self, test_data: np.ndarray, type: str = 'theta', index: int = 0) -> float:
@@ -286,7 +299,7 @@ class ContinuousCADRO:
         pass
 
     @abstractmethod
-    def _lmi_constraint(self, index: int = 0) -> list:
+    def _lmi_constraint(self) -> list:
         pass
 
     @staticmethod

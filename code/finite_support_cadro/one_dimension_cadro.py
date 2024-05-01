@@ -72,13 +72,12 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         self.theta = cp.Variable(1) if theta is None else theta
         self.lambda_ = cp.Variable(len(self.theta_0))
         self.tau = cp.Variable(1)
-        self.gamma = cp.Variable(len(self.theta_0))
+        self.gamma = cp.Variable(1)
 
         objective = cp.Minimize(self.alpha * self.lambda_ + self.tau)
-        constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + \
-                      [gamma >= 0 for gamma in self.gamma]
-        for i in range(len(self.theta_0)):
-            constraints += self._lmi_constraint(index=i)
+        constraints = [lambda_ >= 0 for lambda_ in self.lambda_] + [self.gamma >= 0]
+
+        constraints += self._lmi_constraint()
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=self.solver)
@@ -94,24 +93,19 @@ class CADRO1DLinearRegression(ContinuousCADRO):
         if isinstance(self.theta, cp.Variable):
             self.theta = self.theta.value[0]
 
-    def _lmi_constraint(self, index: int = 0):
+    def _lmi_constraint(self):
         """
         Construct the linear matrix inequality (LMI) constraints for the CADRO problem in cvxpy format.
-
-        :param index: index of the theta_0 to use
-
         :return: a list containing the LMI constraint
         """
-        theta_i = self.theta_0[index]
-        lambda_i = self.lambda_[index]
-        gamma_i = self.gamma[index]
-        B_0 = np.array([[theta_i ** 2, -theta_i], [-theta_i, 1]])
+        B_0 = lambda i: np.array([[self.theta_0[i] ** 2, -self.theta_0[i]], [-self.theta_0[i], 1]])
+
+        A_11 = cp.sum([self.lambda_[i] * B_0(i) - self.gamma * self.ellipsoid.A for i in range(len(self.theta_0))])
         # constructing M_11
-        A_11 = lambda_i * B_0 - gamma_i * self.ellipsoid.A
         A_11 = cp.reshape(A_11, (2, 2))
-        A_12 = gamma_i * self.ellipsoid.a  # + lambda_i * b_0
+        A_12 = self.gamma * self.ellipsoid.a  # + lambda_i * b_0
         A_12 = cp.reshape(A_12, (2, 1))
-        A_22 = self.tau - gamma_i * self.ellipsoid.c  # + lambda_i * beta_0
+        A_22 = self.tau - self.gamma * self.ellipsoid.c  # + lambda_i * beta_0
         A_22 = cp.reshape(A_22, (1, 1))
         A = cp.bmat([[A_11, A_12], [cp.transpose(A_12), A_22]])
         # constructing M_12 and M_21

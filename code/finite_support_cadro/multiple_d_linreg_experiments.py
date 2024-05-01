@@ -307,9 +307,10 @@ def experiment3_2d(seed):
     loss_r_array = np.zeros((len(ellipsoids)))
     test_loss_r_array = np.zeros((len(ellipsoids)))
 
+    test_loss_0_array = np.zeros((len(ellipsoids), nb_tries))
+    test_loss_star_array = np.zeros((len(ellipsoids), nb_tries))
+
     for i, ellipsoid in enumerate(ellipsoids):
-        test_loss_0_array = np.zeros((nb_tries))
-        test_loss_star_array = np.zeros((nb_tries))
 
         # get the robust cost
         robust_opt = RobustOptimization(ellipsoid)
@@ -330,25 +331,36 @@ def experiment3_2d(seed):
             # collect the results
             alpha_array[i, k] = problem.results["alpha"][0]
             lambda_array[i, k] = problem.results["lambda"][0]
-            test_loss_0_array[k] = problem.test_loss(test_data, 'theta_0')
-            test_loss_star_array[k] = problem.test_loss(test_data, 'theta')
+            test_loss_0_array[i, k] = problem.test_loss(test_data, 'theta_0')
+            test_loss_star_array[i, k] = problem.test_loss(test_data, 'theta')
 
             if k == 0:
                 test_loss_r_array[i] = problem.test_loss(test_data, 'theta_r')
 
-        # make the plot for the loss histograms: overlaying histograms for loss_0 and loss_star
-        title = r"$\phi = " + str(round(np.rad2deg(angles[i]))) + r"^{\circ}$"
-        fig, ax = plt.subplots()
-        aux.plot_loss_histograms(ax, test_loss_0_array, test_loss_star_array, test_loss_r_array[i], title=title,
-                                 bins=20)
-        plt.tight_layout()
-        plt.savefig(
-            "thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(np.rad2deg(angles[i]))) + f"d{d}.png")
-        plt.show()
-
         print("theta_r", problem.theta_r)
 
+    # make the plot for the loss histograms
+    print("histograms")
+    width, height = 5, 3
+    assert width * height >= len(ellipsoids)  # make sure we have enough subplots
+    fig, ax = plt.subplots(ncols=width, nrows=height)
+    for i in range(len(ellipsoids)):
+        # remove outliers: only keep the losses where the loss_0 is not too large
+        # indices = np.where(test_loss_0_array < 10 * np.median(test_loss_0_array))
+        aux.plot_loss_histograms(ax[i // width, i % width],
+                                 test_loss_0_array[i, :], test_loss_star_array[i, :],
+                                 test_loss_r_array[i], title=r"$\phi = {}$".format(round(np.rad2deg(angles[i]))),
+                                 bins=30)
+        # set xlim to [15, 18]
+        ax[i // width, i % width].set_xlim([15, 18])
+        # x ticks at 16, 17 and 18
+        ax[i // width, i % width].set_xticks([15, 16, 17, 18])
+    plt.tight_layout()
+    plt.savefig("thesis_figures/multivariate_ls/rotations/hist_loss_all_d" + str(d) + ".png")
+    plt.show()
+
     # make the plot for the alphas: boxplot combined with scatterplot
+    print("alphas")
     fig, ax = plt.subplots(ncols=len(ellipsoids))
     # set all axes to the same limits
     max_limit = np.max(alpha_array)
@@ -369,6 +381,7 @@ def experiment3_2d(seed):
     plt.show()
 
     # plot the robust test loss as a function of the angle
+    print("loss")
     plt.figure()
     plt.plot(np.rad2deg(angles), test_loss_r_array, marker='o')
     plt.xlabel(r"$\phi$ (degrees)")
@@ -384,7 +397,7 @@ def experiment3_md(seed, d: int = 3):
     Test the effect of rotating the LJ ellipsoid on the CADRO method for the 2D case
     """
     # generate the data
-    m = 40
+    m = 12 * d
     sigma = 1
     actual_rico = 1
     actual_slope = actual_rico * np.ones((d - 1,))
@@ -393,13 +406,13 @@ def experiment3_md(seed, d: int = 3):
     assert b > a
     generator = np.random.default_rng(seed)
 
-    indices = range(-10, 11)
+    indices = range(-10, 10)
 
     ellipsoids = []
     ricos = []
 
     for index in indices:
-        rico_rot = index / np.sqrt(d - 1)
+        rico_rot = (index + np.sqrt(d - 1)) / np.sqrt(d - 1)
         slope_rot = rico_rot * np.ones((d - 1,))
         ellipsoids.append(Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)),
                                                          -2, 2, theta=slope_rot, scaling_factor=1.05))
@@ -407,31 +420,39 @@ def experiment3_md(seed, d: int = 3):
 
     alpha_array = np.zeros((len(ellipsoids), nb_tries))
     lambda_array = np.zeros((len(ellipsoids), nb_tries))
+
     loss_r_array = np.zeros((len(ellipsoids)))
     test_loss_r_array = np.zeros((len(ellipsoids)))
 
-    test_x = MDG.uniform_unit_hypercube(generator, d - 1, 1000)
+    test_x = a + (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000)
     test_y = np.array([np.dot(test_x[:, i], actual_slope) for i in range(1000)]) + \
              MDG.normal_disturbance(generator, sigma, 1000, True)
     test_data = np.vstack([test_x, test_y])
 
+    # figure for the loss histograms
+    width, height = 5, 4
+    assert width * height >= len(ellipsoids)  # make sure we have enough subplots
+    fig, ax = plt.subplots(ncols=width, nrows=height)
+
+    print(f"{datetime.now()} - Dimension {d} - Starting the loop")
     for i in range(len(ellipsoids)):
+        # setup
         slope = ricos[i] * np.ones((d - 1,))
         ellipsoid = ellipsoids[i]
-
-        test_loss_0_array = np.zeros(nb_tries)
-        test_loss_star_array = np.zeros(nb_tries)
+        test_loss_0_array = np.zeros((nb_tries))
+        test_loss_star_array = np.zeros((nb_tries))
 
         # get the robust cost
         robust_opt = RobustOptimization(ellipsoid)
         robust_opt.solve_least_squares()
         loss_r_array[i] = robust_opt.cost
 
+        print(f"{datetime.now()} - Slope {ricos[i]}")
         for k in range(nb_tries):
-            # sample uniformly from the unit hypercube
-            x = MDG.uniform_unit_hypercube(generator, d - 1, m)
-            y = np.array([np.dot(x[:, i], actual_slope) for i in range(m)]) + MDG.normal_disturbance(generator, sigma,
-                                                                                                     m)
+            # generate training data
+            x = a + (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m)
+            y = (np.array([np.dot(x[:, i], actual_slope) for i in range(m)]) +
+                 MDG.normal_disturbance(generator, sigma, m))
             data = np.vstack([x, y])
             MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
 
@@ -448,32 +469,26 @@ def experiment3_md(seed, d: int = 3):
             if k == 0:
                 test_loss_r_array[i] = problem.test_loss(test_data, 'theta_r')
 
-        # remove outliers: only keep the losses where the loss_0 is not too large
-        test_loss_0_array = test_loss_0_array[test_loss_0_array < 10 * np.median(test_loss_0_array)]
-        test_loss_star_array = test_loss_star_array[test_loss_star_array < 10 * np.median(test_loss_star_array)]
+        # update figure
+        indices = np.where(test_loss_0_array <= 10 * np.median(test_loss_0_array))
+        aux.plot_loss_histograms(ax[i // width, i % width],
+                                 test_loss_0_array[indices], test_loss_star_array[indices],
+                                 test_loss_r_array[i], title=f"{round(ricos[i], 2)}", bins=20)
 
-        # make the plot for the loss histograms: overlaying histograms for loss_0 and loss_star
-        title = f"slope = {round(ricos[i], 2)}"
-        fig, ax = plt.subplots()
-        aux.plot_loss_histograms(ax, test_loss_0_array, test_loss_star_array, test_loss_r_array[i], title=title,
-                                 bins=30)
-        plt.tight_layout()
-        plt.savefig(
-            "thesis_figures/multivariate_ls/rotations/hist_loss_" + str(round(ricos[i], 2)) + f"d{d}.png")
-        plt.show()
-
-        print("theta_r", problem.theta_r)
+    plt.tight_layout()
+    plt.savefig("thesis_figures/multivariate_ls/rotations/hist_loss_all_d" + str(d) + ".png")
+    plt.show()
 
     # make the plot for the alphas: boxplot combined with scatterplot
+    print(f"{datetime.now()} - Alphas")
     fig, ax = plt.subplots(ncols=len(ellipsoids))
     # set all axes to the same limits
     max_limit = np.max(alpha_array)
     min_limit = np.min(alpha_array)
     for i in range(len(ellipsoids)):
+        title = str(round(ricos[i], 2)) if i % 3 == 0 else None
         aux.plot_alphas(ax[i], alpha_array[i, :], lambda_array[i, :], loss_r_array[i],
-                        title=f"slope = {round(ricos[i], 2)}",
-                        boxplot=True)
-        # log scale for y
+                        boxplot=True, title=title)
         ax[i].set_yscale('log')
         ax[i].set_ylim([min_limit, max_limit])
 
@@ -485,9 +500,10 @@ def experiment3_md(seed, d: int = 3):
     plt.show()
 
     # plot the robust test loss as a function of the angle
+    print(f"{datetime.now()} - Loss")
     plt.figure()
     plt.plot(ricos, test_loss_r_array, marker='o')
-    plt.xlabel(r"$\phi$ (degrees)")
+    plt.xlabel(r"slope")
     plt.ylabel(r"$\ell(\theta_r)$")
     plt.grid()
     plt.tight_layout()
@@ -614,7 +630,7 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [2, 5, 10, 15]
+    dimensions = [20, 30]
     a, b = 0, 10
     assert b > a
     generator = np.random.default_rng(seed)
@@ -637,6 +653,8 @@ def experiment5(seed):
         ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
         ses.type = "SES"
+
+        sigma_subg = aux.subgaussian_parameter(d, a, b, 4, -4, emp_slope)
 
         ellipsoids = [lj, ses]
 
@@ -678,7 +696,7 @@ def experiment5(seed):
                         problem.solve()
 
                         # solve the moment DRO problem
-                        dro = MomentDRO(ellipsoid, data, confidence=0.05, solver=cp.MOSEK)
+                        dro = MomentDRO(ellipsoid, data, confidence=0.05, solver=cp.MOSEK, sigmaG=sigma_subg)
                         theta_dro = dro.solve(check_data=False)
 
                         # fill in the distance arrays
@@ -742,24 +760,24 @@ def experiment5(seed):
                     plt.close()
                     plt.rcParams.update({'font.size': 15})
 
-        # plot the average loss in function of m for every sigma
-        for j, sigma in enumerate(sigmas):
-            fig, ax = plt.subplots()
-            aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
-                            np.percentile(test_loss_0[:, j, :], 75, axis=1),
-                            np.percentile(test_loss_0[:, j, :], 25, axis=1),
-                            np.median(test_loss_star[:, j, :], axis=1),
-                            np.percentile(test_loss_star[:, j, :], 75, axis=1),
-                            np.percentile(test_loss_star[:, j, :], 25, axis=1),
-                            np.median(test_loss_dro[:, j, :], axis=1),
-                            np.percentile(test_loss_dro[:, j, :], 75, axis=1),
-                            np.percentile(test_loss_dro[:, j, :], 25, axis=1),
-                            ms, title=None)
+            # plot the average loss in function of m for every sigma
+            for j, sigma in enumerate(sigmas):
+                fig, ax = plt.subplots()
+                aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
+                                np.percentile(test_loss_0[:, j, :], 75, axis=1),
+                                np.percentile(test_loss_0[:, j, :], 25, axis=1),
+                                np.median(test_loss_star[:, j, :], axis=1),
+                                np.percentile(test_loss_star[:, j, :], 75, axis=1),
+                                np.percentile(test_loss_star[:, j, :], 25, axis=1),
+                                np.median(test_loss_dro[:, j, :], axis=1),
+                                np.percentile(test_loss_dro[:, j, :], 75, axis=1),
+                                np.percentile(test_loss_dro[:, j, :], 25, axis=1),
+                                ms, title=None)
 
-            plt.tight_layout()
-            plt.savefig(
-                f"thesis_figures/multivariate_ls/loss_m/loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
-            plt.close()
+                plt.tight_layout()
+                plt.savefig(
+                    f"thesis_figures/multivariate_ls/loss_m/loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
+                plt.close()
 
     plt.rcParams.update({'font.size': 10})
 
@@ -769,8 +787,10 @@ if __name__ == '__main__':
     # experiment1(seed)
     # experiment2(seed)
     # experiment3_2d(seed)
-    experiment3_md(seed, d=4)
-    # experiment5(seed)
+    # dimensions = [4, 10, 20]
+    # for d in dimensions:
+    #     experiment3_md(seed, d)
+    experiment5(seed)
 
     # solvers = ['SCS', 'CVXOPT', 'CLARABEL', 'MOSEK']
     # dimensions_lists = [[5, 10, 15, 20],
