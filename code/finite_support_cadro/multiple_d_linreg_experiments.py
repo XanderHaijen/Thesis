@@ -630,14 +630,17 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [20, 30]
-    a, b = 0, 10
+    dimensions = [2]
+    a, b = -5, 5
     assert b > a
     generator = np.random.default_rng(seed)
     nb_tries = 100
 
-    data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
-    sigmas = [0.2, 0.5, 1, 2]
+    # data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
+    # sigmas = [0.2, 0.5, 1, 2]
+
+    data_size = lambda d: np.logspace(1, 5, 15, dtype=int)
+    sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
         ms = data_size(d)
@@ -645,7 +648,7 @@ def experiment5(seed):
 
         print(f"{datetime.now()} - Dimension {d} - Ellipsoid construction")
         emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
-        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -3, 3, theta=emp_slope,
                                             scaling_factor=1.05)
         lj.type = "LJ"
 
@@ -679,6 +682,7 @@ def experiment5(seed):
             for i, m in enumerate(ms):
                 print(f"{datetime.now()} - m = {m}")
                 for j, sigma in enumerate(sigmas):
+                    print(f"{datetime.now()} - sigma = {sigma}")
                     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
                     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
                              MDG.normal_disturbance(generator, sigma, 1000, True)
@@ -714,51 +718,51 @@ def experiment5(seed):
                         lambda_array[i, j, k] = problem.results["lambda"][0]
                         alpha_array[i, j, k] = problem.results["alpha"][0]
 
-                    # remove outliers:
-                    # get the indices where the distances are not too large (w.r.t. dist_star_0)
-                    ind = np.where(dist_star_0[i, j, :] < 10 * np.median(dist_star_0[i, j, :]))
-                    dist_star_0_plot = dist_star_0[i, j, ind]
-                    dist_star_r_plot = dist_star_r[i, j, ind]
-
-                    # plot the results: ||theta_star - theta_0|| and ||theta_star - theta_r|| on the x and y axis
-                    # respectively
-                    plt.figure()
-                    plt.scatter(dist_star_0_plot, dist_star_r_plot, marker='x')
-                    plt.xlabel(r"$||\theta^* - \theta_0||$")
-                    plt.ylabel(r"$||\theta^* - \theta_r||$")
-                    plt.title(f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}")
-                    maximum = (max(np.max(dist_star_0_plot), 5), max(np.max(dist_star_r_plot), 5))
-                    plt.ylim([0, maximum[1]])
-                    plt.xlim([0, maximum[0]])
-                    plt.grid()
-                    plt.tight_layout()
-                    plt.savefig(
-                        f"thesis_figures/multivariate_ls/distances/distances_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
-                    plt.close()
-
-                    # plot the loss histograms
-                    fig, ax = plt.subplots()
-                    aux.plot_loss_histograms(ax, test_loss_0[i, j, :], test_loss_star[i, j, :], test_loss_r[i, j],
-                                             title=f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}",
-                                             bins=30)
-
-                    plt.tight_layout()
-                    plt.savefig(
-                        f"thesis_figures/multivariate_ls/histograms/hist_loss_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
-                    plt.close()
-
-                    # make the plot for the alphas: boxplot combined with scatterplot
-                    plt.rcParams.update({'font.size': 10})
-                    fig, ax = plt.subplots()
-                    aux.plot_alphas(ax, alpha_array[i, j, :], lambda_array[i, j, :], cost_r,
-                                    title=None, boxplot=True, marker='o')
-                    fig.set_size_inches(4, 6)
-                    # make sure all labels are visible
-                    plt.tight_layout()
-                    plt.savefig(
-                        f"thesis_figures/multivariate_ls/alphas/alphas_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
-                    plt.close()
-                    plt.rcParams.update({'font.size': 15})
+                    # # remove outliers:
+                    # # get the indices where the distances are not too large (w.r.t. dist_star_0)
+                    # ind = np.where(dist_star_0[i, j, :] < 10 * np.median(dist_star_0[i, j, :]))
+                    # dist_star_0_plot = dist_star_0[i, j, ind]
+                    # dist_star_r_plot = dist_star_r[i, j, ind]
+                    #
+                    # # plot the results: ||theta_star - theta_0|| and ||theta_star - theta_r|| on the x and y axis
+                    # # respectively
+                    # plt.figure()
+                    # plt.scatter(dist_star_0_plot, dist_star_r_plot, marker='x')
+                    # plt.xlabel(r"$||\theta^* - \theta_0||$")
+                    # plt.ylabel(r"$||\theta^* - \theta_r||$")
+                    # plt.title(f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}")
+                    # maximum = (max(np.max(dist_star_0_plot), 5), max(np.max(dist_star_r_plot), 5))
+                    # plt.ylim([0, maximum[1]])
+                    # plt.xlim([0, maximum[0]])
+                    # plt.grid()
+                    # plt.tight_layout()
+                    # plt.savefig(
+                    #     f"thesis_figures/multivariate_ls/distances/distances_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
+                    # plt.close()
+                    #
+                    # # plot the loss histograms
+                    # fig, ax = plt.subplots()
+                    # aux.plot_loss_histograms(ax, test_loss_0[i, j, :], test_loss_star[i, j, :], test_loss_r[i, j],
+                    #                          title=f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}",
+                    #                          bins=30)
+                    #
+                    # plt.tight_layout()
+                    # plt.savefig(
+                    #     f"thesis_figures/multivariate_ls/histograms/hist_loss_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
+                    # plt.close()
+                    #
+                    # # make the plot for the alphas: boxplot combined with scatterplot
+                    # plt.rcParams.update({'font.size': 10})
+                    # fig, ax = plt.subplots()
+                    # aux.plot_alphas(ax, alpha_array[i, j, :], lambda_array[i, j, :], cost_r,
+                    #                 title=None, boxplot=True, marker='o')
+                    # fig.set_size_inches(4, 6)
+                    # # make sure all labels are visible
+                    # plt.tight_layout()
+                    # plt.savefig(
+                    #     f"thesis_figures/multivariate_ls/alphas/alphas_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
+                    # plt.close()
+                    # plt.rcParams.update({'font.size': 15})
 
             # plot the average loss in function of m for every sigma
             for j, sigma in enumerate(sigmas):
@@ -773,10 +777,11 @@ def experiment5(seed):
                                 np.percentile(test_loss_dro[:, j, :], 75, axis=1),
                                 np.percentile(test_loss_dro[:, j, :], 25, axis=1),
                                 ms, title=None)
-
+                plt.xscale('log')
+                plt.grid()
                 plt.tight_layout()
                 plt.savefig(
-                    f"thesis_figures/multivariate_ls/loss_m/loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
+                    f"thesis_figures/multivariate_ls/loss_m/loss_dro_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
                 plt.close()
 
     plt.rcParams.update({'font.size': 10})

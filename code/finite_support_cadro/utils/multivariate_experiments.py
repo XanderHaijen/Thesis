@@ -60,15 +60,16 @@ def plot_timings(timings_mean_array, timings_std_array, dimensions, scale='log')
 def plot_loss_m(gca,
                 mean_loss_0, upper_bound_0, lower_bound_0,
                 mean_loss_star, upper_bound_star, lower_bound_star,
-                mean_loss_dro, upper_bound_dro, lower_bound_dro,
-                m, title=None, scale='log'):
-    gca.errorbar(m, mean_loss_0, yerr=[mean_loss_0 - lower_bound_0, upper_bound_0 - mean_loss_0], label="SAA",
+                mean_loss_dro, upper_bound_dro, lower_bound_dro, m,
+                label_dro = "DRO", label_star = "CADRO", label_0 = "SAA",
+                title=None, scale='log'):
+    gca.errorbar(m, mean_loss_0, yerr=[mean_loss_0 - lower_bound_0, upper_bound_0 - mean_loss_0], label=label_0,
                  color='orange', fmt='o-')
     gca.errorbar(m, mean_loss_star, yerr=[mean_loss_star - lower_bound_star, upper_bound_star - mean_loss_star],
-                 label="CADRO", color='b', fmt='o-')
+                 label=label_star, color='b', fmt='o-')
     if mean_loss_dro is not None:
         gca.errorbar(m, mean_loss_dro, yerr=[mean_loss_dro - lower_bound_dro, upper_bound_dro - mean_loss_dro],
-                     label="DRO", color='g', fmt='o-')
+                     label=label_dro, color='g', fmt='o-')
     gca.set_xlabel("m")
     gca.set_ylabel("Loss")
     if title is not None:

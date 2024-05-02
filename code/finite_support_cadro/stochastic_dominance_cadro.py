@@ -14,7 +14,7 @@ class StochasticDominanceCADRO(ContinuousCADRO):
     """
 
     def __init__(self, data: np.ndarray, ellipsoid: Ellipsoid,
-                 nb_thresholds: int = 50, threshold_type: str = 'equidistant',
+                 nb_thresholds: int = 50, threshold_type: Union[str, np.ndarray] = 'equidistant',
                  solver=cp.MOSEK, split=None, seed=0):
         """
         :param data: (d, m) matrix containing the data
@@ -22,9 +22,12 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         :param split: split the data into two parts. If None, the default split is used.
         """
         super().__init__(data, ellipsoid, solver, split, seed)
-        self.nb_thresholds = nb_thresholds
         self.threshold_type = threshold_type
-        self.thresholds = None # thresholds for the stochastic dominance constraints
+        if isinstance(threshold_type, np.ndarray):
+            self.nb_thresholds = len(threshold_type)
+        elif isinstance(threshold_type, str):
+            self.nb_thresholds = nb_thresholds
+        self.thresholds = None  # thresholds for the stochastic dominance constraints
 
 
     @property
@@ -132,8 +135,8 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         :return: The loss function calculated for the given theta and data as a scalar.
         """
         if not cvxpy:
-            loss = (np.dot(theta, x) - y) ** 2
-            return loss[0, 0]  # reshape to scalar
+            loss = (theta.T @ x - y) ** 2
+            return loss[0]  # reshape to scalar
         else:
             return cp.square(cp.matmul(cp.transpose(theta), x) - y)
 
@@ -162,12 +165,14 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         kappa = int(np.ceil(m_cal * gamma))
 
         # function phi_i(theta_0, x) = max(0, l(theta_0, x) - threshold_i)
-        eta = np.array([self._scalar_loss(self.theta_0, self.data[:-1, i], self.data[-1, i]) - threshold
-                        if self._scalar_loss(self.theta_0, self.data[:-1, i], self.data[-1, i]) > threshold
-                        else 0 for i in range(self.data.shape[1])])
+        eta = np.array([self._scalar_loss(self.theta_0[0],
+                                          self.data[:-1, self.split + i], self.data[-1, self.split + i]) - threshold
+                        if self._scalar_loss(self.theta_0[0],
+                                             self.data[:-1, self.split + i], self.data[-1, self.split + i]) > threshold
+                        else 0 for i in range(m_cal)])
 
         eta.sort(axis=0)
-        eta_bar = self._eta_bar()
+        eta_bar = max(self._eta_bar() - threshold, 0)
         alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
         return alpha
 
@@ -289,7 +294,16 @@ class StochasticDominanceCADRO(ContinuousCADRO):
     def _compute_thresholds(self, nb_thresholds, threshold_type):
         min_threshold = 0
         max_threshold = self._eta_bar()
-        if threshold_type == 'equidistant':
-            return np.linspace(min_threshold, max_threshold, nb_thresholds)
+        if isinstance(threshold_type, str):
+            if threshold_type == 'equidistant':
+                return np.linspace(min_threshold, max_threshold, nb_thresholds)
+            else:
+                raise ValueError("Invalid threshold_type. Must be 'equidistant'.")
+        elif isinstance(threshold_type, np.ndarray):
+            # assert that threshold_type is in [0, 1]
+            assert np.all(0 <= threshold_type) and np.all(threshold_type <= 1)
+            thresholds = min_threshold + (max_threshold - min_threshold) * threshold_type
+            np.sort(thresholds)
+            return thresholds
         else:
-            raise ValueError("Invalid threshold_type")
+            raise ValueError("Invalid type for threshold_type. Must be 'equidistant' or a numpy array.")

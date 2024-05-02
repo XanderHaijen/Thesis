@@ -348,14 +348,14 @@ class MomentDRO:
 def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
-    n = 50
-    d = 20
-    a, b = 0, 5
+    n = 150
+    d = 2
+    a, b = 0, 1
     assert a < b
-    sigma = 2
+    sigma = 1
 
     # set SigmaG
-    SigmaG = aux.subgaussian_parameter(d, a, b, -2, 2, np.ones((d - 1, )))
+    SigmaG = aux.subgaussian_parameter(d, a, b, -3, 3, np.ones((d - 1, )))
 
     slope = np.ones((d - 1,))
     train_x = generator.uniform(a, b, (n, d - 1))
@@ -366,7 +366,7 @@ def moment_dro_tester(seed):
 
     # test the MomentDRO class
     dro = MomentDRO(ellipsoid, data, confidence=0.05, sigmaG=SigmaG, solver="MOSEK")
-    dro.solve(verbose=False)
+    dro.solve(verbose=False, check_data=True)
     print(dro.theta)
 
 
