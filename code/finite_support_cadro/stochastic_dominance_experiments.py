@@ -114,7 +114,7 @@ def experiment1(seed):
                                              bins=20)
                     plt.tight_layout()
                     plt.savefig(
-                        f"thesis_figures/stoch_dom/loss_hist_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
+                        f"loss_hist_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
                     plt.close()
 
                     # save the losses to file
@@ -148,9 +148,8 @@ def experiment1(seed):
 
                 plt.tight_layout()
                 plt.savefig(
-                    f"thesis_figures/stoch_dom/loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
+                    f"loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
                 plt.close()
-
 
             # gather the distance array in a table
             distance_df = pd.DataFrame(columns=sigmas, index=ms)
@@ -163,7 +162,7 @@ def experiment1(seed):
                     )
 
             # save to excel
-            distance_df.to_csc(f"thesis_figures/multivariate_ls/thesis_figures/stoch_dom/distance_array_d{d}_{ellipsoid.type}.csv")
+            distance_df.to_csv(f"distance_array_d{d}_{ellipsoid.type}.csv")
 
     plt.rcParams.update({'font.size': 10})
 
@@ -171,12 +170,12 @@ def experiment1(seed):
 def experiment2(seed):
     generator = np.random.default_rng(seed)
     d = 15
-    m = 120
-    sigma = 2
+    m = 150
+    sigma = 1
     a, b = 0, 10
 
     slope = np.ones((d - 1,))
-    emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
+    emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -1, 1)  # random disturbance
     ellipsoid = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
                                                scaling_factor=1.05)
 
@@ -184,24 +183,35 @@ def experiment2(seed):
     # nodes = 0.5 * np.cos((2 * np.arange(1, 101) - 1) * np.pi / 200) + 0.5
 
     # generate equally spaced nodes
-    nodes = np.linspace(0, 0.1, 50)
+    nodes = np.linspace(0, 0.25, 50)
     # add 1 to nodes
     nodes = np.append(nodes, 1)
+
+    test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
+    test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
+                MDG.normal_disturbance(generator, sigma, 1000, True)
+    test_data = np.vstack([test_x, test_y])
 
     while True:
         x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
         y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
             MDG.normal_disturbance(generator, sigma, m, True)
         data = np.vstack((x, y))
+        # read from file
+        # data = np.loadtxt("training_data.csv", delimiter=",")
 
-        problem = StochasticDominanceCADRO(data, ellipsoid, nb_thresholds=20, threshold_type=nodes)
+        problem = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes)
         problem.set_theta_r()
         results = problem.solve()
 
         # use this code to generate a non-binary decision ------------------------------------
-        # loss_r, loss, loss_0 = results["loss_r"], results["loss"], results["loss_0"]
-        # if np.abs(loss_r - loss) > 0.1 * np.abs(loss_r) and np.abs(loss_0 - loss) > 0.1 * np.abs(loss_0):
-        #     break
+        # loss_r = problem.test_loss(test_data, 'theta_r')
+        # loss_0 = problem.test_loss(test_data, 'theta_0')
+        # loss = problem.test_loss(test_data, 'theta')
+        # if np.abs(loss_r - loss) > 0.1 * np.abs(loss) and np.abs(loss_0 - loss) > 0.1 * np.abs(loss):
+            # save training data to file
+            # np.savetxt("training_data.csv", data, delimiter=",")
+            # break
         # else:
         #     print("Retrying")
         # ---------------------------------------------------
@@ -218,7 +228,9 @@ def experiment2(seed):
     plt.legend()
     plt.show()
 
-    loss_0, loss_r, loss = results["loss_0"], results["loss_r"], results["loss"]
+    loss_0 = problem.test_loss(test_data, 'theta_0')
+    loss_r = problem.test_loss(test_data, 'theta_r')
+    loss = problem.test_loss(test_data, 'theta')
     dist_0 = np.linalg.norm(loss_0 - loss) / np.linalg.norm(loss)
     dist_r = np.linalg.norm(loss_r - loss) / np.linalg.norm(loss)
     print(f"Distance between l(theta_0) and l(theta_star): {dist_0}")
@@ -228,5 +240,5 @@ def experiment2(seed):
 
 if __name__ == "__main__":
     seed = 0
-    # experiment1(seed)
-    experiment2(seed)
+    experiment1(seed)
+    # experiment2(seed)

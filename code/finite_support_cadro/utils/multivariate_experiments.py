@@ -41,6 +41,7 @@ def plot_loss_histograms(gca, loss_0_array, loss_star_array, loss_r, title=None,
         gca.axvline(loss_r, color='black', linestyle='dashed', linewidth=1)
     if title is not None:
         gca.set_title(title)
+    gca.set_xlabel("Loss")
 
 
 def plot_timings(timings_mean_array, timings_std_array, dimensions, scale='log'):

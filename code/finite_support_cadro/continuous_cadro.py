@@ -280,7 +280,7 @@ class ContinuousCADRO:
         self.tau = None
         self.gamma = None
         self.theta = None
-        self._eta_bar = None
+        self.__eta_bar = None
 
     @abstractmethod
     def test_loss(self, test_data: np.ndarray, type: str = 'theta', index: int = 0) -> float:

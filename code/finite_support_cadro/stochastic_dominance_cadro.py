@@ -164,15 +164,12 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         gamma = calibration.info['radius']
         kappa = int(np.ceil(m_cal * gamma))
 
-        # function phi_i(theta_0, x) = max(0, l(theta_0, x) - threshold_i)
-        eta = np.array([self._scalar_loss(self.theta_0[0],
-                                          self.data[:-1, self.split + i], self.data[-1, self.split + i]) - threshold
-                        if self._scalar_loss(self.theta_0[0],
-                                             self.data[:-1, self.split + i], self.data[-1, self.split + i]) > threshold
-                        else 0 for i in range(m_cal)])
+        # function phi_i(theta_0, x) = 1_{l(theta_0, x) > threshold}
+        eta = np.array([1 if self._scalar_loss(self.theta_0[0], self.data[:-1, i], self.data[-1, i]) >= threshold
+                        else 0 for i in range(self.split, self.data.shape[1])])
 
         eta.sort(axis=0)
-        eta_bar = max(self._eta_bar() - threshold, 0)
+        eta_bar = 1 if self._eta_bar() >= threshold else 0
         alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
         return alpha
 
@@ -232,10 +229,8 @@ class StochasticDominanceCADRO(ContinuousCADRO):
 
             # 1. construct A_bar
             # A_bar = [[M_bar, Theta], [Theta^T, 1]]
-            M_bar_11 = B0 * cp.sum(self.lambda_[:i]) if i > 0 \
-                else np.zeros((self.data.shape[0], self.data.shape[0]))
-            M_bar_12 = b0 * cp.sum(self.lambda_[:i]) if i > 0 \
-                else np.zeros((self.data.shape[0], 1))
+            M_bar_11 = np.zeros((self.data.shape[0], self.data.shape[0]))
+            M_bar_12 = np.zeros((self.data.shape[0], 1))
             M_bar_21 = cp.transpose(M_bar_12)
             M_bar_22 = cp.sum(self.lambda_[:i] * (beta0 - self.thresholds[:i])) + self.tau if i > 0 \
                 else self.tau
