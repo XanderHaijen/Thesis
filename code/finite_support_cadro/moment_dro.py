@@ -349,8 +349,8 @@ def moment_dro_tester(seed):
     generator = np.random.default_rng(seed)
     # generate data
     n = 150
-    d = 2
-    a, b = 0, 1
+    d = 5
+    a, b = -1, 1
     assert a < b
     sigma = 1
 

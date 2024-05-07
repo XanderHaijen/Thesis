@@ -170,43 +170,63 @@ def experiment1(seed):
 
 def experiment2(seed):
     generator = np.random.default_rng(seed)
-    d = 20
-    m = 50
-    sigma = 1
+    d = 15
+    m = 120
+    sigma = 2
     a, b = 0, 10
 
-    slope = 2 * np.ones((d - 1,))
-    x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
-    y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
-        MDG.normal_disturbance(generator, sigma, m, True)
-    data = np.vstack((x, y))
-    ellipsoid = Ellipsoid.ellipse_from_corners(np.array([0] * (d - 1)), np.array([10] * (d - 1)), -5, 5,
-                                               slope - 0.5, 1.05)
+    slope = np.ones((d - 1,))
+    emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
+    ellipsoid = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+                                               scaling_factor=1.05)
 
     # generate 100 Chebyshev nodes on [0, 1]
-    nodes = 0.5 * np.cos((2 * np.arange(1, 101) - 1) * np.pi / 200) + 0.5
-    nodes = np.linspace(0, 0.2, 50)
+    # nodes = 0.5 * np.cos((2 * np.arange(1, 101) - 1) * np.pi / 200) + 0.5
+
+    # generate equally spaced nodes
+    nodes = np.linspace(0, 0.1, 50)
     # add 1 to nodes
-    # nodes = np.append(nodes, 1)
-    problem = StochasticDominanceCADRO(data, ellipsoid, nb_thresholds=20, threshold_type=nodes)
-    problem.set_theta_r()
-    results = problem.solve()
+    nodes = np.append(nodes, 1)
+
+    while True:
+        x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
+        y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
+            MDG.normal_disturbance(generator, sigma, m, True)
+        data = np.vstack((x, y))
+
+        problem = StochasticDominanceCADRO(data, ellipsoid, nb_thresholds=20, threshold_type=nodes)
+        problem.set_theta_r()
+        results = problem.solve()
+
+        # use this code to generate a non-binary decision ------------------------------------
+        # loss_r, loss, loss_0 = results["loss_r"], results["loss"], results["loss_0"]
+        # if np.abs(loss_r - loss) > 0.1 * np.abs(loss_r) and np.abs(loss_0 - loss) > 0.1 * np.abs(loss_0):
+        #     break
+        # else:
+        #     print("Retrying")
+        # ---------------------------------------------------
+
+        if True:
+            break
+
     lambdas, alphas = results["lambda"], results["alpha"]
     nodes = problem.thresholds
 
     plt.scatter(nodes, alphas / np.max(alphas), color='b', marker='o', label='alpha (normalized)')
     plt.scatter(nodes, lambdas, marker='.', color='r', label='lambda')
+    plt.xlabel('Threshold')
     plt.legend()
     plt.show()
 
-    theta_0, theta_r, theta_star = results["theta_0"], results["theta_r"], results["theta"]
-    dist_0 = np.linalg.norm(theta_0 - theta_star) / np.linalg.norm(theta_star)
-    dist_r = np.linalg.norm(theta_r - theta_star) / np.linalg.norm(theta_star)
-    print(f"Distance between theta_0 and theta_star: {dist_0}")
-    print(f"Distance between theta_r and theta_star: {dist_r}")
+    loss_0, loss_r, loss = results["loss_0"], results["loss_r"], results["loss"]
+    dist_0 = np.linalg.norm(loss_0 - loss) / np.linalg.norm(loss)
+    dist_r = np.linalg.norm(loss_r - loss) / np.linalg.norm(loss)
+    print(f"Distance between l(theta_0) and l(theta_star): {dist_0}")
+    print(f"Distance between l(theta_r) and l(theta_star): {dist_r}")
+    print(f"l(theta_0) = {results['loss_0']} - l(theta_r) = {results['loss_r']} - l(theta_star) = {results['loss']}")
 
 
 if __name__ == "__main__":
     seed = 0
-    experiment1(seed)
-    # experiment2(seed)
+    # experiment1(seed)
+    experiment2(seed)
