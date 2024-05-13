@@ -2,15 +2,11 @@ import numpy as np
 import cvxpy as cp
 import matplotlib.pyplot as plt
 from datetime import datetime
-
-import pandas as pd
-
 from ellipsoids import Ellipsoid
 from multiple_dimension_cadro import LeastSquaresCadro
 from stochastic_dominance_cadro import StochasticDominanceCADRO
 from utils.data_generator import MultivariateDataGenerator as MDG
 import utils.multivariate_experiments as aux
-from robust_optimization import RobustOptimization
 
 
 def experiment1(seed):
@@ -52,14 +48,6 @@ def experiment1(seed):
             test_loss_stoch_dom = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_r = np.zeros((len(ms), len(sigmas)))
 
-            distance_array = np.zeros((len(ms), len(sigmas), nb_tries))
-            # 0 if theta_sd is close to theta_0, 1 if theta_sd is close to theta_r, 2 if neither
-
-            # get robust cost
-            robust_opt = RobustOptimization(ellipsoid)
-            robust_opt.solve_least_squares()
-            theta_r = robust_opt.theta
-
             for i, m in enumerate(ms):
                 with open('progress.txt', 'a') as f:
                     f.write(f"{datetime.now()} - m = {m}\n")
@@ -79,22 +67,13 @@ def experiment1(seed):
                         # solve the CADRO problem
                         problem = LeastSquaresCadro(data, ellipsoid, solver=cp.MOSEK)
                         problem.solve()
-                        theta_star = problem.theta
 
                         # solve the moment DRO problem
                         nodes = np.linspace(0, 0.25, 50)
                         nodes = np.append(nodes, 1)
-                        stoch_dominance = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes, solver=cp.MOSEK)
+                        stoch_dominance = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes,
+                                                                   solver=cp.MOSEK)
                         stoch_dominance.solve()
-                        theta_sd = stoch_dominance.theta
-
-                        # fill in the distance array
-                        if np.linalg.norm(theta_sd - theta_star) < 1e-4 * np.linalg.norm(theta_star):
-                            distance_array[i, j, k] = 0
-                        elif np.linalg.norm(theta_sd - theta_r) < 1e-4 * np.linalg.norm(theta_r):
-                            distance_array[i, j, k] = 1
-                        else:
-                            distance_array[i, j, k] = 2
 
                         # fill in the loss arrays
                         test_loss_0[i, j, k] = problem.test_loss(test_data, 'theta_0')
@@ -151,19 +130,6 @@ def experiment1(seed):
                     f"loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
                 plt.close()
 
-            # gather the distance array in a table
-            distance_df = pd.DataFrame(columns=sigmas, index=ms)
-            for i, m in enumerate(ms):
-                for j, sigma in enumerate(sigmas):
-                    distance_df.loc[m, sigma] = (
-                        np.sum(distance_array[i, j, :] == 0),
-                        np.sum(distance_array[i, j, :] == 1),
-                        np.sum(distance_array[i, j, :] == 2)
-                    )
-
-            # save to excel
-            distance_df.to_csv(f"distance_array_d{d}_{ellipsoid.type}.csv")
-
     plt.rcParams.update({'font.size': 10})
 
 
@@ -189,7 +155,7 @@ def experiment2(seed):
 
     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
-                MDG.normal_disturbance(generator, sigma, 1000, True)
+             MDG.normal_disturbance(generator, sigma, 1000, True)
     test_data = np.vstack([test_x, test_y])
 
     while True:
@@ -209,9 +175,9 @@ def experiment2(seed):
         # loss_0 = problem.test_loss(test_data, 'theta_0')
         # loss = problem.test_loss(test_data, 'theta')
         # if np.abs(loss_r - loss) > 0.1 * np.abs(loss) and np.abs(loss_0 - loss) > 0.1 * np.abs(loss):
-            # save training data to file
-            # np.savetxt("training_data.csv", data, delimiter=",")
-            # break
+        # save training data to file
+        # np.savetxt("training_data.csv", data, delimiter=",")
+        # break
         # else:
         #     print("Retrying")
         # ---------------------------------------------------
@@ -234,9 +200,9 @@ def experiment2(seed):
     axs[1].legend()
     plt.show()
 
-
     # get the loss of every training data point
     losses = problem.loss_array
+
     def emp_cdf(lambdas, thresholds, x):
         return np.sum(lambdas * (thresholds <= x))
 
