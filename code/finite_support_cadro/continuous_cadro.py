@@ -222,6 +222,8 @@ class ContinuousCADRO:
                                           self.data[1, self.split + i]) for i in range(m_cal)])
         eta.sort(axis=0)
         eta_bar = self._eta_bar(index=index)
+        if eta_bar is None:
+            pass
         alpha = (kappa / m_cal - gamma) * eta[kappa - 1] + np.sum(eta[kappa:m_cal]) / m_cal + eta_bar * gamma
         self.alpha[index] = alpha
 
@@ -266,7 +268,7 @@ class ContinuousCADRO:
                 if index == 0:
                     self.__eta_bar = eta_bar
                 return eta_bar
-        elif index == 0:
+        else:
             return self.__eta_bar
 
     def reset(self):

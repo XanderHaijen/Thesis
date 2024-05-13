@@ -26,6 +26,10 @@ class SampleCadro():
         :param seed: seed for the random number generator
         :param suppress_userwarning: if True, suppress the UserWarning. Default is True.
         """
+        # check if data or samples contain nan values
+        if np.isnan(data).any() or np.isnan(samples).any():
+            raise ValueError("The data or samples contain nan values.")
+
         self.data = data  # data is a (d x m) matrix, where d is the dimension and m the number of data points
         if data.shape[0] != samples.shape[0]:
             raise ValueError("The dimensions of the data and the samples must match.")
@@ -89,7 +93,8 @@ class SampleCadro():
         :return: the loss function at theta_r
         """
         if self.theta_r is None:
-            raise ValueError("theta_r has not been set yet.")
+            # raise ValueError("theta_r has not been set yet.")
+            return np.nan
         else:
             return np.mean([self.loss_function(self.theta_r, data_point) for data_point in self.data.T])
 
@@ -168,6 +173,8 @@ class SampleCadro():
         # step 3: solve the CADRO problem
         self._set_theta_star()
 
+        # to return the results, we first have to determine theta_r
+        self._set_theta_r()
         # return the results
         return self.results
 
@@ -180,7 +187,7 @@ class SampleCadro():
         training_data = self.data[:, :self.split]
         d = self.data.shape[0] - 1
         theta0 = cp.Variable(d, 'theta0')
-        objective = cp.sum([self.loss_function(theta0, data_point) for data_point in training_data.T])
+        objective = cp.sum([self.loss_function(theta0, data_point) for data_point in training_data.T]) / self.split
         objective = cp.Minimize(objective)
         problem = cp.Problem(objective)
         problem.solve(solver=self.solver)
@@ -249,6 +256,22 @@ class SampleCadro():
         self.tau = self.tau.value
         self.theta = self.theta.value[:, 0]
 
+    def _set_theta_r(self):
+        """
+        Set the robust solution theta_r. The robust solution is calculated using the robust optimization problem.
+
+        :return: None. The robust solution is stored in the object.
+        """
+        d = self.data.shape[0]
+        n = self.samples.shape[1]
+        theta_r = cp.Variable((d - 1, 1), 'theta_r')
+        # construct cp array with all losses
+        losses = [self.loss_function(theta_r, sample) for sample in self.samples.T]
+        objective = cp.Minimize(cp.maximum(*losses))
+        problem = cp.Problem(objective)
+        problem.solve(solver=self.solver)
+        self.theta_r = theta_r.value[:, 0]
+
     def test_loss(self, test_data, theta: Union[str, np.ndarray] = "theta") -> float:
         """
         Compute the loss on the test data.
@@ -283,16 +306,24 @@ class SampleCadro():
         :return: the constraint as a list
         """
         sample = self.samples[:, index]
+        ### this piece of code is only for the binary classification problem using the binary cross-entropy loss
+        # if the loss function in theta_0 is undefined, this means l(theta_0) = inf. This means the constraint is
+        # always satisfied, so we can skip it.
+        # check if we encounter an invalid value
+        if np.isnan(self.loss_function(self.theta_0, sample)):
+            return []
+        ### end of the binary classification problem
+
         constraint = [self.loss_function(self.theta, sample) -
                       self.lambda_ * self.loss_function(self.theta_0, sample) <= self.tau]
         return constraint
 
-    def _eta_bar(self, safety_factor=1.1) -> float:
+    def _eta_bar(self) -> float:
         """
         Calculate the value for eta_bar. The value is calculated using the samples, and is equal to the
         sample maximum of the loss function.
         """
-        return safety_factor * np.max([self.loss_function(self.theta_0, sample) for sample in self.samples.T])
+        return np.max([self.loss_function(self.theta_0, sample) for sample in self.samples.T])
 
     def reset(self):
         """
@@ -312,82 +343,66 @@ def main(seed):
     given points in a square [0, 1] x [0, 1], the goal is to find a linear classifier that identifies the boundary
     line between the two groups. The loss function is the binary cross-entropy loss.
     """
-    def predict(theta, x, inference=False):
-        """
-        Linear classifier for the problem. The classifier is a line that separates the square into two parts.
 
-        :param theta: the parameter vector (d-1, 1)
-        :param x: the data point (d-1, 1)
-
-        :return: either 1 or 0
+    def predict(theta: np.ndarray, x: np.ndarray):
         """
-        if isinstance(theta, cp.Variable):
-            if inference:
-                raise ValueError("Inference is not possible with cp.Variable.")
-            return cp.matmul(theta.T, x)
-        elif isinstance(theta, np.ndarray):
-            pred = np.dot(theta.T, x)
-            if inference:
-                return 0 if pred < 0 else 1
-            else:
-                return pred
+        Prediction function for binary +1/-1 classification. The function is for use in inference and returns
+        sgn(theta^T x).
+        """
+        return np.sign(np.dot(theta.T, x))
 
     def loss(theta: Union[cp.Variable, np.ndarray], xi: np.ndarray) -> Union[cp.Expression, float]:
         """
-        The binary cross-entropy loss function. The loss is calculated for one data point and is without the
-        normalization (1 / m) which is commonly present.
-
-        :param theta: the parameter vector (d-1, 1)
-        :param xi: the data point (d, 1)
-
-        :return: the loss for the data point, either as a cp.Expression or a float depending on the type of theta
+        Hinge loss function for the binary classification problem. The labels are either +1 or -1.
+        The loss function is defined as max(0, 1 - y * theta^T x)
         """
         data, label = xi[:-1], xi[-1]
         if isinstance(theta, cp.Variable):
-            return - (label * cp.log(predict(theta, data) + 0.001) + (1 - label) * cp.log(1 - predict(theta, data) + 0.001))
+            return cp.power(cp.maximum(0, 1 - label * cp.matmul(theta.T, data)), 2)
+            # return cp.exp(-label * cp.matmul(theta.T, data))
         elif isinstance(theta, np.ndarray):
-            pred = predict(theta, data)
-            if np.isclose(pred, 0, atol=1e-6):
-                pred = 1e-6
-            elif np.isclose(pred, 1, atol=1e-6):
-                pred = 1 - 1e-6
-            return - (label * np.log(pred) + (1 - label) * np.log(1 - pred))
+            return max(0, 1 - label * np.dot(theta.T, data)) ** 2
+            # return np.clip(np.exp(-label * np.dot(theta.T, data)), 0, 1e8)
 
     # generate the data
     generator = np.random.default_rng(seed)
-    m = 30  # training data
-    n = 1000  # samples
+    m = 60  # training data
+    n = 2000  # samples
 
     # x = [1, x1, x2]
     x = np.vstack((np.ones(m), generator.uniform(0, 1, m), generator.uniform(0, 1, m)))
     # y = step(2x1 - x2 - 0.5)
     y = 2 * x[1] - x[2] - 0.5
-    y = np.where(y > 0, 1, 0)
+    y = np.sign(y)
+    x += generator.normal(0, 0.1, x.shape)
     data = np.vstack((x, y)).T
     # put a uniform grid over the square
     sz = int(np.sqrt(n / 2))
-    ls = np.linspace(0, 1, sz)
-    xx, yy = np.meshgrid(ls, ls)
+    ls1 = np.linspace(np.min(x[1]) - 0.5, np.max(x[1]) + 0.5, sz)
+    ls2 = np.linspace(np.min(x[2]) - 0.5, np.max(x[2]) + 0.5, sz)
+    xx, yy = np.meshgrid(ls1, ls2)
     samples = np.vstack((np.ones(sz * sz), xx.flatten(), yy.flatten()))
 
     # combine every point with the -1 and 1 label
     samples_1 = np.vstack((samples, np.ones(sz * sz))).T
-    samples_2 = np.vstack((samples, np.zeros(sz * sz))).T
+    samples_2 = np.vstack((samples, - np.ones(sz * sz))).T
     samples = np.vstack((samples_1, samples_2))
-
 
     # plot the training data together with the labels as a color
     import matplotlib.pyplot as plt
     plt.scatter(x[1], x[2], c=y)
-    plt.show()
+    # plt.show()
 
     # plot the samples
-    plt.scatter(samples[:, 1], samples[:, 2])
+    plt.scatter(samples[:, 1], samples[:, 2], marker='.', alpha=0.5)
     plt.show()
 
     # create the CADRO object
     cadro = SampleCadro(data.T, samples.T, loss_function=loss, seed=seed)
-    cadro.solve()
+    results = cadro.solve()
+
+    cadro.print_results(include_robust=True)
+
 
 
 if __name__ == '__main__':

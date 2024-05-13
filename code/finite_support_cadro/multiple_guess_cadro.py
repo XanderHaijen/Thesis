@@ -49,16 +49,18 @@ def experiment1(seed):
 
     plt.figure()
     plt.scatter(data_train[0, :], data_train[1, :], label="data", marker=".")
-    plt.plot(x_train, theta_r * x_train, label=r"$\theta_r = {:.4f}$".format(theta_r), linestyle="-", color="blue")
-    plt.plot(x_train, theta_star * x_train, label=r"$\theta^* = {:.4f}$".format(theta_star), color="red",
+    plt.plot(x_train, theta_r * x_train, label=r"$\theta_r = {:.2f}$".format(theta_r), linestyle="-", color="blue")
+    plt.plot(x_train, theta_star * x_train, label=r"$\theta^* = {:.2f}$".format(theta_star), color="red",
              linestyle="--")
-    plt.plot(x_train, theta_1 * x_train, label=r"$\theta_1 = {:.4f}$".format(theta_1), linestyle="--", color="grey")
-    plt.plot(x_train, theta_2 * x_train, label=r"$\theta_2 = {:.4f}$".format(theta_2), linestyle="--", color="grey")
+    plt.plot(x_train, theta_1 * x_train, label=r"$\theta_1 = {:.2f}$".format(theta_1), linestyle="--", color="grey")
+    plt.plot(x_train, theta_2 * x_train, label=r"$\theta_2 = {:.2f}$".format(theta_2), linestyle="--", color="grey")
     problem.ellipsoid.plot(ax=plt.gca(), color="red", label="ellipsoid")
-
+    plt.xlabel("x")
+    plt.ylabel("y")
     plt.legend()
     plt.grid()
     plt.title("Löwner-John ellipsoid")
+    plt.tight_layout()
     plt.savefig("thesis_figures/1d_linreg_multiple/theta_r_star_lj.png")
 
     # 2.2 Smallest enclosing circle
@@ -79,15 +81,17 @@ def experiment1(seed):
     plt.scatter(data_train[0, :], data_train[1, :], label="data", marker=".")
     x_plot = np.linspace(-5, 5, 10)
     x_plot2 = np.linspace(-2.5, 2.5, 10)
-    plt.plot(x_plot, theta_r * x_plot, label=r"$\theta_r = {:.4f}$".format(theta_r), linestyle="solid", color="blue")
-    plt.plot(x_plot, theta_star * x_plot, label=r"$\theta^* = {:.4f}$".format(theta_star), color="red", linestyle="--")
-    plt.plot(x_plot, theta_1 * x_plot, label=r"$\theta_1 = {:.4f}$".format(theta_1), linestyle="--", color="grey")
-    plt.plot(x_plot2, theta_2 * x_plot2, label=r"$\theta_2 = {:.4f}$".format(theta_2), linestyle="--", color="grey")
+    plt.plot(x_plot, theta_r * x_plot, label=r"$\theta_r = {:.2f}$".format(theta_r), linestyle="solid", color="blue")
+    plt.plot(x_plot, theta_star * x_plot, label=r"$\theta^* = {:.2f}$".format(theta_star), color="red", linestyle="--")
+    plt.plot(x_plot, theta_1 * x_plot, label=r"$\theta_1 = {:.2f}$".format(theta_1), linestyle="--", color="grey")
+    plt.plot(x_plot2, theta_2 * x_plot2, label=r"$\theta_2 = {:.2f}$".format(theta_2), linestyle="--", color="grey")
     problem.ellipsoid.plot(ax=plt.gca(), color="red", label="ellipsoid")
-
+    plt.xlabel("x")
+    plt.ylabel("y")
     plt.legend()
     plt.grid()
     plt.title("Circular support")
+    plt.tight_layout()
     plt.savefig("thesis_figures/1d_linreg_multiple/theta_r_star_circle.png")
 
     plt.show()
@@ -417,6 +421,6 @@ def experiment4(seed):
 
 if __name__ == "__main__":
     seed = 42
-    # experiment1(seed)
+    experiment1(seed)
     # experiment3(seed)
-    experiment4(seed)
+    # experiment4(seed)

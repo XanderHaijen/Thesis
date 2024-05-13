@@ -62,6 +62,13 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         else:
             return self._loss_function(self.theta_0[0], self.data)
 
+    @property
+    def loss_array(self):
+        """
+        Get the loss function for all the data points.
+        """
+        return np.array([self._loss_function(self.theta, self.data[:, i]) for i in range(self.data.shape[1])])
+
     def set_theta_r(self):
         """
         Set theta_r to be the solution of the robust optimization problem.
@@ -232,20 +239,21 @@ class StochasticDominanceCADRO(ContinuousCADRO):
             M_bar_11 = np.zeros((self.data.shape[0], self.data.shape[0]))
             M_bar_12 = np.zeros((self.data.shape[0], 1))
             M_bar_21 = cp.transpose(M_bar_12)
-            M_bar_22 = cp.sum(self.lambda_[:i] * (beta0 - self.thresholds[:i])) + self.tau if i > 0 \
+            M_bar_22 = cp.sum(self.lambda_[:i]) + self.tau if i > 0 \
                 else self.tau
             M_bar = cp.bmat([[M_bar_11, M_bar_12], [M_bar_21, cp.reshape(M_bar_22, (1, 1))]])
 
             # 2. construct B_bars
-            v_next = self.thresholds[i + 1] if i < self.nb_thresholds - 1 else self._eta_bar()
+            v_next = self.thresholds[i]
+            v_prev = self.thresholds[i - 1] if i > 0 else 0
             B_bar_1 = cp.bmat([[A, a], [cp.transpose(a), c]])
-            B_bar_2 = cp.bmat([[B0, b0], [cp.transpose(b0), cp.reshape(beta0 - self.thresholds[i], (1,1))]])
+            B_bar_2 = cp.bmat([[B0, b0], [cp.transpose(b0), cp.reshape(beta0 - v_prev, (1,1))]])
             B_bar_3 = cp.bmat([[-B0, -b0], [-cp.transpose(b0), cp.reshape(-beta0 + v_next, (1, 1))]])
-            B_Bar = - self.gamma[3 * i] * B_bar_1 - self.gamma[3 * i + 1] * B_bar_2 - self.gamma[3 * i + 2] * B_bar_3
+            B_bar = - self.gamma[3 * i] * B_bar_1 - self.gamma[3 * i + 1] * B_bar_2 - self.gamma[3 * i + 2] * B_bar_3
 
             # 3. construct the constraint
-            C = M_bar + B_Bar
-            X = cp.bmat([[C, theta_vector], [cp.transpose(theta_vector), cp.reshape(1, (1, 1))]])
+            C = B_bar + M_bar
+            X = cp.bmat([[C, theta_vector], [cp.transpose(theta_vector), cp.reshape(1.0, (1, 1))]])
             constraints += [X >> 0]
 
         return constraints

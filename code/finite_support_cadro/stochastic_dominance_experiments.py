@@ -170,7 +170,7 @@ def experiment1(seed):
 def experiment2(seed):
     generator = np.random.default_rng(seed)
     d = 15
-    m = 150
+    m = 60
     sigma = 1
     a, b = 0, 10
 
@@ -183,9 +183,9 @@ def experiment2(seed):
     # nodes = 0.5 * np.cos((2 * np.arange(1, 101) - 1) * np.pi / 200) + 0.5
 
     # generate equally spaced nodes
-    nodes = np.linspace(0, 0.25, 50)
+    nodes = np.linspace(0, 1, 75)
     # add 1 to nodes
-    nodes = np.append(nodes, 1)
+    # nodes = np.append(nodes, 1)
 
     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
@@ -222,9 +222,35 @@ def experiment2(seed):
     lambdas, alphas = results["lambda"], results["alpha"]
     nodes = problem.thresholds
 
-    plt.scatter(nodes, alphas / np.max(alphas), color='b', marker='o', label='alpha (normalized)')
-    plt.scatter(nodes, lambdas, marker='.', color='r', label='lambda')
-    plt.xlabel('Threshold')
+    # 1 x 2 subplot
+    fig, axs = plt.subplots(2, 1, figsize=(10, 5))
+    # enable grid
+    axs[0].grid()
+    axs[1].grid()
+    axs[0].scatter(nodes, alphas, color='b', marker='.', label='alpha')
+    axs[1].scatter(nodes, lambdas, marker='.', color='r', label='lambda')
+    axs[1].set_xlabel('Threshold')
+    axs[0].legend()
+    axs[1].legend()
+    plt.show()
+
+
+    # get the loss of every training data point
+    losses = problem.loss_array
+    def emp_cdf(lambdas, thresholds, x):
+        return np.sum(lambdas * (thresholds <= x))
+
+    # plot the empirical CDF
+    x = np.linspace(0, 1800, 10000)
+    y = [emp_cdf(lambdas, nodes, x_i) for x_i in x]
+    y = np.array(y) / np.sum(lambdas)
+    plt.plot(x, y, label='Empirical CDF')
+
+    # plot a cdf histogram of the losses
+    plt.hist(losses, bins=100, density=True, cumulative=True, histtype='step', color='r', label='CDF of losses')
+
+    plt.xlabel('Loss')
+    # plt.xlim([0, 250])
     plt.legend()
     plt.show()
 

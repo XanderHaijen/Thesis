@@ -57,7 +57,6 @@ def plot_timings(timings_mean_array, timings_std_array, dimensions, scale='log')
         ax.set_yscale('log')
 
 
-
 def plot_loss_m(gca,
                 mean_loss_0, upper_bound_0, lower_bound_0,
                 mean_loss_star, upper_bound_star, lower_bound_star,
