@@ -135,8 +135,8 @@ def experiment1(seed):
 
 def experiment2(seed):
     generator = np.random.default_rng(seed)
-    d = 15
-    m = 50
+    d = 5
+    m = 15
     sigma = 1
     a, b = 0, 10
 
@@ -201,19 +201,19 @@ def experiment2(seed):
     plt.show()
 
     # get the loss of every training data point
-    losses = problem.loss_array(test_data)
-
-    def emp_cdf(lambdas, thresholds, x):
-        return np.sum(lambdas * (thresholds <= x))
+    losses = problem.loss_array(test_data, 'theta_0')
 
     # plot the empirical CDF
-    x = np.linspace(0, np.max(problem.thresholds), 10000)
-    y = [emp_cdf(lambdas, nodes, x_i) for x_i in x]
-    y = np.array(y) / np.sum(lambdas)
-    plt.plot(x, y, label='Empirical CDF')
+    x = problem.thresholds
+    y = results['alpha']
+    plt.plot(x, 1 - y, label='Empirical CDF')
 
     # plot a cdf histogram of the losses
-    plt.hist(losses, bins=100, density=True, cumulative=True, histtype='step', color='r', label='CDF of losses')
+    x = np.sort(losses)
+    if problem.eta_bar > x[-1]:
+        x = np.append(x, problem.eta_bar)
+    y = np.arange(1, len(x) + 1) / len(x)
+    plt.plot(x, y, label='CDF of loss_0')
 
     plt.xlabel('Loss')
     plt.ylabel('CDF')

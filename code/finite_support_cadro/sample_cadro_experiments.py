@@ -234,10 +234,17 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         plt.scatter(samples[1], samples[2], c=labels, cmap='coolwarm', marker='o')
         plt.show()
 
+    # accuracy
     accuracy = np.mean(labels == samples[-1])
+
+    # accuracy at theta_0
+    labels_0 = np.array([aux.predict(results["theta_0"], sample, aux.classifier) for sample in unlabeled_samples.T])
+    accuracy_0 = np.mean(labels_0 == samples[-1])
+
+    # check if the solution has collapsed
     collapse = True if np.abs(results["lambda"]) < 1e-6 else False
 
-    return accuracy, collapse
+    return accuracy, accuracy_0, collapse
 
 
 if __name__ == "__main__":
@@ -247,26 +254,38 @@ if __name__ == "__main__":
 
     # linear_features_experiment(seed)
 
-    m = [40, 80, 160, 320, 640, 1280]
-    nb_samples = 2000
-    nb_tries = 100
+    m = [20, 40, 80, 160] #, 320, 640, 1280]
+    nb_samples = 200
+    nb_tries = 10
     accuracies = np.zeros((len(m), nb_tries))
+    accuracies_0 = np.zeros((len(m), nb_tries))
     collapses = np.zeros(len(m))
     for i in range(len(m)):
-        print(f"{datetime.now()} - Running experiment for m = {m[i]}...")
+        with open("progress.txt", "a") as f:
+            f.write(f"{datetime.now()} - Running experiment for m = {m[i]}...\n")
         for j in range(nb_tries):
-            accuracy, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples)
+            accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples)
             accuracies[i, j] = accuracy
+            accuracies_0[i, j] = accuracy_0
             collapses[i] += collapse
 
     median_accuracies = np.median(accuracies, axis=1)
     p75_accuracies = np.percentile(accuracies, 75, axis=1)
     p25_accuracies = np.percentile(accuracies, 25, axis=1)
 
+    median_accuracies_0 = np.median(accuracies_0, axis=1)
+    p75_accuracies_0 = np.percentile(accuracies_0, 75, axis=1)
+    p25_accuracies_0 = np.percentile(accuracies_0, 25, axis=1)
+
     plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
-                    fmt='o-', label='Accuracy')
+                    fmt='o-', label=r'Accuracy at $\theta^\star$')
+    plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
+                    fmt='o-', label=r'Accuracy at $\theta_0$')
     plt.xlabel('Number of training samples')
     plt.ylabel('Accuracy')
+    plt.xscale('log')
+    plt.legend()
+    plt.grid()
     plt.tight_layout()
     plt.show()
     plt.savefig("accuracy_hyperbolic_features.png")
@@ -275,9 +294,11 @@ if __name__ == "__main__":
     collapses /= nb_tries
     plt.plot(m, collapses, 'o-')
     plt.xlabel('Number of training samples')
-    plt.ylabel('Collapse')
+    plt.ylabel('Collapse rate')
+    plt.xscale('log')
+    plt.legend()
     plt.tight_layout()
     plt.show()
     plt.savefig("collapse_hyperbolic_features.png")
 
-    plt.rcParams.update({'font.size': 12})
+    plt.rcParams.update({'font.size': 10})

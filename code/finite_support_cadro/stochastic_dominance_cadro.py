@@ -69,15 +69,24 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         """
         return self._eta_bar()
 
-    def loss_array(self, data: np.ndarray = None) -> np.ndarray:
+    def loss_array(self, data: np.ndarray = None, theta: str = "theta") -> np.ndarray:
         """
         Get the loss function for all the data points.
         """
-        if data is None:
-            return np.array([self._loss_function(self.theta, self.data[:, i]) for i in range(self.data.shape[1])])
-        else:
-            return np.array([self._loss_function(self.theta, data[:, i]) for i in range(data.shape[1])])
+        if not isinstance(theta, str):
+            raise ValueError("theta must be a string. Must be either 'theta', 'theta_r' or 'theta_0'.")
 
+        if theta == "theta":
+            theta = self.theta
+        elif theta == "theta_r":
+            theta = self.theta_r
+        elif theta == "theta_0":
+            theta = self.theta_0[0]
+
+        if data is None:
+            return np.array([self._loss_function(theta, self.data[:, i]) for i in range(self.data.shape[1])])
+        else:
+            return np.array([self._loss_function(theta, data[:, i]) for i in range(data.shape[1])])
 
     def set_theta_r(self):
         """
