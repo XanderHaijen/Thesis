@@ -630,17 +630,17 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [2]
+    dimensions = [10]
     a, b = -5, 5
     assert b > a
     generator = np.random.default_rng(seed)
-    nb_tries = 100
+    nb_tries = 10
 
-    # data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
-    # sigmas = [0.2, 0.5, 1, 2]
+    data_size = lambda d: [2 * d] #, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
+    sigmas = [0.2, 0.5] #, 1, 2]
 
-    data_size = lambda d: np.logspace(1, 5, 15, dtype=int)
-    sigmas = [1]
+    # data_size = lambda d: np.logspace(1, 5, 15, dtype=int)
+    # sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
         ms = data_size(d)
@@ -664,6 +664,7 @@ def experiment5(seed):
         for ellipsoid in ellipsoids:
             dist_star_0 = np.zeros((len(ms), len(sigmas), nb_tries))
             dist_star_r = np.zeros((len(ms), len(sigmas), nb_tries))
+            dist_r_0 = np.zeros((len(ms), len(sigmas), nb_tries))
 
             test_loss_0 = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_star = np.zeros((len(ms), len(sigmas), nb_tries))
@@ -706,6 +707,7 @@ def experiment5(seed):
                         # fill in the distance arrays
                         dist_star_0[i, j, k] = np.linalg.norm(problem.results["theta"] - problem.results["theta_0"])
                         dist_star_r[i, j, k] = np.linalg.norm(problem.results["theta"] - theta_r)
+                        dist_r_0[i, j, k] = np.linalg.norm(problem.results["theta_r"] - problem.results["theta_0"])
 
                         # fill in the loss arrays
                         test_loss_0[i, j, k] = problem.test_loss(test_data, 'theta_0')
@@ -718,27 +720,45 @@ def experiment5(seed):
                         lambda_array[i, j, k] = problem.results["lambda"][0]
                         alpha_array[i, j, k] = problem.results["alpha"][0]
 
-                    # # remove outliers:
-                    # # get the indices where the distances are not too large (w.r.t. dist_star_0)
-                    # ind = np.where(dist_star_0[i, j, :] < 10 * np.median(dist_star_0[i, j, :]))
-                    # dist_star_0_plot = dist_star_0[i, j, ind]
-                    # dist_star_r_plot = dist_star_r[i, j, ind]
-                    #
-                    # # plot the results: ||theta_star - theta_0|| and ||theta_star - theta_r|| on the x and y axis
-                    # # respectively
-                    # plt.figure()
-                    # plt.scatter(dist_star_0_plot, dist_star_r_plot, marker='x')
-                    # plt.xlabel(r"$||\theta^* - \theta_0||$")
-                    # plt.ylabel(r"$||\theta^* - \theta_r||$")
-                    # plt.title(f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}")
-                    # maximum = (max(np.max(dist_star_0_plot), 5), max(np.max(dist_star_r_plot), 5))
-                    # plt.ylim([0, maximum[1]])
-                    # plt.xlim([0, maximum[0]])
-                    # plt.grid()
-                    # plt.tight_layout()
+                    # remove outliers:
+                    # get the indices where the distances are not too large (w.r.t. dist_star_0)
+                    ind = np.where(dist_star_0[i, j, :] < 10 * np.median(dist_star_0[i, j, :]))
+                    dist_star_0_plot = dist_star_0[i, j, ind]
+                    dist_star_r_plot = dist_star_r[i, j, ind]
+
+                    # plot the resulting distance-distance plot
+                    plt.figure()
+                    # respectively
+                    dist_r_0_median = np.median(dist_r_0[i, j, :])
+                    dist_r_0_p25 = np.percentile(dist_r_0[i, j, :], 25)
+                    dist_r_0_p75 = np.percentile(dist_r_0[i, j, :], 75)
+
+                    # plot the median distance between theta_r and theta_0 as a line
+                    line = [[0, dist_r_0_median], [dist_r_0_median, 0]]
+                    plt.plot(line[0], line[1], color='r', label=r'$\|\theta_r - \theta_0\|$')
+                    # plot the 25th and 75th percentiles
+                    line = [[0, dist_r_0_p25], [dist_r_0_p25, 0]]
+                    plt.plot(line[0], line[1], color='r', linestyle='--')
+                    line = [[0, dist_r_0_p75], [dist_r_0_p75, 0]]
+                    plt.plot(line[0], line[1], color='r', linestyle='--')
+
+                    # ||theta_star - theta_0|| and ||theta_star - theta_r|| on the x and y-axis
+                    plt.scatter(dist_star_0_plot, dist_star_r_plot, marker='x')
+
+                    # layout
+                    plt.xlabel(r"$\|\theta^* - \theta_0\|$")
+                    plt.ylabel(r"$\|\theta^* - \theta_r\|$")
+                    plt.title(f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}")
+                    maximum = (max(np.max(dist_star_0_plot), 5), max(np.max(dist_star_r_plot), 5))
+                    plt.ylim([0, maximum[1]])
+                    plt.xlim([0, maximum[0]])
+                    plt.grid()
+                    plt.legend()
+                    plt.tight_layout()
                     # plt.savefig(
                     #     f"thesis_figures/multivariate_ls/distances/distances_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
-                    # plt.close()
+                    plt.show()
+                    plt.close()
                     #
                     # # plot the loss histograms
                     # fig, ax = plt.subplots()
@@ -765,24 +785,24 @@ def experiment5(seed):
                     # plt.rcParams.update({'font.size': 15})
 
             # plot the average loss in function of m for every sigma
-            for j, sigma in enumerate(sigmas):
-                fig, ax = plt.subplots()
-                aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
-                                np.percentile(test_loss_0[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_0[:, j, :], 25, axis=1),
-                                np.median(test_loss_star[:, j, :], axis=1),
-                                np.percentile(test_loss_star[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_star[:, j, :], 25, axis=1),
-                                np.median(test_loss_dro[:, j, :], axis=1),
-                                np.percentile(test_loss_dro[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_dro[:, j, :], 25, axis=1),
-                                ms, title=None)
-                plt.xscale('log')
-                plt.grid()
-                plt.tight_layout()
-                plt.savefig(
-                    f"thesis_figures/multivariate_ls/loss_m/loss_dro_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
-                plt.close()
+            # for j, sigma in enumerate(sigmas):
+            #     fig, ax = plt.subplots()
+            #     aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
+            #                     np.percentile(test_loss_0[:, j, :], 75, axis=1),
+            #                     np.percentile(test_loss_0[:, j, :], 25, axis=1),
+            #                     np.median(test_loss_star[:, j, :], axis=1),
+            #                     np.percentile(test_loss_star[:, j, :], 75, axis=1),
+            #                     np.percentile(test_loss_star[:, j, :], 25, axis=1),
+            #                     np.median(test_loss_dro[:, j, :], axis=1),
+            #                     np.percentile(test_loss_dro[:, j, :], 75, axis=1),
+            #                     np.percentile(test_loss_dro[:, j, :], 25, axis=1),
+            #                     ms, title=None)
+            #     plt.xscale('log')
+            #     plt.grid()
+            #     plt.tight_layout()
+            #     plt.savefig(
+            #         f"thesis_figures/multivariate_ls/loss_m/loss_dro_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
+            #     plt.close()
 
     plt.rcParams.update({'font.size': 10})
 

@@ -136,7 +136,7 @@ def experiment1(seed):
 def experiment2(seed):
     generator = np.random.default_rng(seed)
     d = 15
-    m = 60
+    m = 50
     sigma = 1
     a, b = 0, 10
 
@@ -201,13 +201,13 @@ def experiment2(seed):
     plt.show()
 
     # get the loss of every training data point
-    losses = problem.loss_array
+    losses = problem.loss_array(test_data)
 
     def emp_cdf(lambdas, thresholds, x):
         return np.sum(lambdas * (thresholds <= x))
 
     # plot the empirical CDF
-    x = np.linspace(0, 1800, 10000)
+    x = np.linspace(0, np.max(problem.thresholds), 10000)
     y = [emp_cdf(lambdas, nodes, x_i) for x_i in x]
     y = np.array(y) / np.sum(lambdas)
     plt.plot(x, y, label='Empirical CDF')
@@ -216,7 +216,8 @@ def experiment2(seed):
     plt.hist(losses, bins=100, density=True, cumulative=True, histtype='step', color='r', label='CDF of losses')
 
     plt.xlabel('Loss')
-    # plt.xlim([0, 250])
+    plt.ylabel('CDF')
+    plt.title(f"d = {d}")
     plt.legend()
     plt.show()
 
@@ -228,9 +229,10 @@ def experiment2(seed):
     print(f"Distance between l(theta_0) and l(theta_star): {dist_0}")
     print(f"Distance between l(theta_r) and l(theta_star): {dist_r}")
     print(f"l(theta_0) = {results['loss_0']} - l(theta_r) = {results['loss_r']} - l(theta_star) = {results['loss']}")
+    print(f"eta_bar = {problem.eta_bar}")
 
 
 if __name__ == "__main__":
     seed = 0
-    experiment1(seed)
-    # experiment2(seed)
+    # experiment1(seed)
+    experiment2(seed)

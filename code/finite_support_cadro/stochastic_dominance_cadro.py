@@ -63,11 +63,21 @@ class StochasticDominanceCADRO(ContinuousCADRO):
             return self._loss_function(self.theta_0[0], self.data)
 
     @property
-    def loss_array(self):
+    def eta_bar(self):
+        """
+        Compute the average loss over the data.
+        """
+        return self._eta_bar()
+
+    def loss_array(self, data: np.ndarray = None) -> np.ndarray:
         """
         Get the loss function for all the data points.
         """
-        return np.array([self._loss_function(self.theta, self.data[:, i]) for i in range(self.data.shape[1])])
+        if data is None:
+            return np.array([self._loss_function(self.theta, self.data[:, i]) for i in range(self.data.shape[1])])
+        else:
+            return np.array([self._loss_function(self.theta, data[:, i]) for i in range(data.shape[1])])
+
 
     def set_theta_r(self):
         """

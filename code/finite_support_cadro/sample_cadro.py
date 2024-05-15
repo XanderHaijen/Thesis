@@ -14,6 +14,8 @@ class SampleCadro():
 
     def __init__(self, data: np.ndarray, samples: np.ndarray,
                  loss_function: Callable[[Union[np.ndarray, cp.Variable], np.ndarray], Union[float, cp.Expression]],
+                 variable_dimension: int,
+                 regularization: Callable[[Union[np.ndarray, cp.Variable]], Union[float, cp.Expression]] = None,
                  solver=cp.MOSEK, split=None,
                  seed=0, suppress_userwarning=True):
         """
@@ -21,6 +23,8 @@ class SampleCadro():
         :param samples: (d, m) matrix containing the samples (used for the sample-based constraints)
         :param loss_function: loss function to use for the optimization problem. Takes two arguments: theta and data
         and returns a float. It should calculate the loss for one data point.
+        :param variable_dimension: dimension of the variable theta. Theta should be a (dim x 1) vector.
+        :param regularization: regularization function to use for the optimization problem. Takes one argument: theta
         :param solver: solver to use for the optimization problem (cp.solver type). Default is cp.MOSEK.
         :param split: split the data into two parts. If None, the default split is used.
         :param seed: seed for the random number generator
@@ -46,6 +50,11 @@ class SampleCadro():
             warnings.filterwarnings("ignore", category=UserWarning)
 
         self.loss_function = loss_function
+        if regularization is None:
+            self.regularization = lambda theta: 0
+        else:
+            self.regularization = regularization
+        self.var_dim = variable_dimension
 
         self.theta = None
         self.theta_0 = None
@@ -53,6 +62,8 @@ class SampleCadro():
         self.lambda_ = None
         self.alpha = None
         self.tau = None
+
+        self.__robust_cost = None
 
     @property
     def results(self):
@@ -85,7 +96,8 @@ class SampleCadro():
             raise ValueError("theta has not been set yet.")
         else:
             # return the mean over all data points
-            return np.mean([self.loss_function(self.theta, data_point) for data_point in self.data.T])
+            return np.mean([self.loss_function(self.theta, data_point) + self.regularization(self.theta)
+                            for data_point in self.data.T])
 
     @property
     def loss_r(self) -> float:
@@ -93,10 +105,10 @@ class SampleCadro():
         :return: the loss function at theta_r
         """
         if self.theta_r is None:
-            # raise ValueError("theta_r has not been set yet.")
-            return np.nan
-        else:
-            return np.mean([self.loss_function(self.theta_r, data_point) for data_point in self.data.T])
+            self._set_theta_r()
+
+        return np.mean([self.loss_function(self.theta_r, data_point) + self.regularization(self.theta_r)
+                        for data_point in self.data.T])
 
     @property
     def loss_0(self) -> float:
@@ -106,7 +118,8 @@ class SampleCadro():
         if self.theta_0 is None:
             raise ValueError("theta_0 has not been set yet.")
         else:
-            return np.mean([self.loss_function(self.theta_0, data_point) for data_point in self.data.T])
+            return np.mean([self.loss_function(self.theta_0, data_point) + self.regularization(self.theta_0)
+                            for data_point in self.data.T])
 
     @property
     def objective(self) -> float:
@@ -115,7 +128,7 @@ class SampleCadro():
         Sum(alpha * lambda) + tau.
 
         """
-        return np.sum(self.alpha * self.lambda_) + self.tau
+        return np.sum(self.alpha * self.lambda_) + self.tau + self.regularization(self.theta)
 
     @staticmethod
     def _set_data_split(m: int, mu=0.01, nu=0.8):
@@ -134,6 +147,13 @@ class SampleCadro():
         split = int(np.floor(nu * mu * (m * (m + 1)) / (mu * m + nu)))
         return 2 if split < 2 else split
 
+    @property
+    def robust_cost(self):
+        if self.__robust_cost is None:
+            self._set_theta_r()
+
+        return self.__robust_cost
+
     def print_results(self, include_robust=False):
         """
         Print the resulting values for the CADRO problem. If the problem hasn't been solved yet, the results are not
@@ -148,7 +168,7 @@ class SampleCadro():
         print("theta = ", self.theta)
         if include_robust:
             if self.theta_r is None:
-                self.set_theta_r()
+                self._set_theta_r()
             print("theta_r = ", self.theta_r)
         print("loss = ", self.loss)
         if include_robust:
@@ -185,9 +205,9 @@ class SampleCadro():
         :return: None. The initial theta_0 values are stored in the object.
         """
         training_data = self.data[:, :self.split]
-        d = self.data.shape[0] - 1
-        theta0 = cp.Variable(d, 'theta0')
-        objective = cp.sum([self.loss_function(theta0, data_point) for data_point in training_data.T]) / self.split
+        theta0 = cp.Variable(self.var_dim, 'theta0')
+        objective = cp.sum([self.loss_function(theta0, data_point) for data_point in training_data.T]) / self.split + \
+                    self.regularization(theta0)
         objective = cp.Minimize(objective)
         problem = cp.Problem(objective)
         problem.solve(solver=self.solver)
@@ -231,12 +251,12 @@ class SampleCadro():
         n = self.samples.shape[1]  # number of samples
 
         # variables
-        self.theta = cp.Variable((d - 1, 1), 'theta')
+        self.theta = cp.Variable((self.var_dim, 1), 'theta')
         self.lambda_ = cp.Variable((), 'lambda')
         self.tau = cp.Variable((), 'tau')
 
         # objective function
-        objective = cp.Minimize(self.alpha * self.lambda_ + self.tau)
+        objective = cp.Minimize(self.alpha * self.lambda_ + self.tau + self.regularization(self.theta))
 
         # constraints
         constraints = [self.lambda_ >= 0]
@@ -260,17 +280,16 @@ class SampleCadro():
         """
         Set the robust solution theta_r. The robust solution is calculated using the robust optimization problem.
 
-        :return: None. The robust solution is stored in the object.
+        :return: None. The robust solution and cost are stored in the object.
         """
-        d = self.data.shape[0]
-        n = self.samples.shape[1]
-        theta_r = cp.Variable((d - 1, 1), 'theta_r')
+        theta_r = cp.Variable((self.var_dim, 1), 'theta_r')
         # construct cp array with all losses
-        losses = [self.loss_function(theta_r, sample) for sample in self.samples.T]
+        losses = [self.loss_function(theta_r, sample) + self.regularization(theta_r) for sample in self.samples.T]
         objective = cp.Minimize(cp.maximum(*losses))
         problem = cp.Problem(objective)
         problem.solve(solver=self.solver)
         self.theta_r = theta_r.value[:, 0]
+        self.__robust_cost = problem.value
 
     def test_loss(self, test_data, theta: Union[str, np.ndarray] = "theta") -> float:
         """
@@ -292,7 +311,7 @@ class SampleCadro():
                 raise ValueError("The value for theta is incorrect. Should be np.ndarray or "
                                  "'theta', 'theta_0', 'theta_r'.")
         elif isinstance(theta, np.ndarray):
-            if theta.shape != (self.data.shape[0] - 1, 1):
+            if theta.shape != (self.var_dim, 1):
                 raise ValueError("The shape of theta is incorrect.")
 
         return np.mean([self.loss_function(theta, data_point) for data_point in test_data.T])
@@ -306,14 +325,6 @@ class SampleCadro():
         :return: the constraint as a list
         """
         sample = self.samples[:, index]
-        ### this piece of code is only for the binary classification problem using the binary cross-entropy loss
-        # if the loss function in theta_0 is undefined, this means l(theta_0) = inf. This means the constraint is
-        # always satisfied, so we can skip it.
-        # check if we encounter an invalid value
-        if np.isnan(self.loss_function(self.theta_0, sample)):
-            return []
-        ### end of the binary classification problem
-
         constraint = [self.loss_function(self.theta, sample) -
                       self.lambda_ * self.loss_function(self.theta_0, sample) <= self.tau]
         return constraint
@@ -335,75 +346,3 @@ class SampleCadro():
         self.lambda_ = None
         self.tau = None
         self.theta = None
-
-
-def main(seed):
-    """
-    Test problem for the sampling cadro case: binary classification
-    given points in a square [0, 1] x [0, 1], the goal is to find a linear classifier that identifies the boundary
-    line between the two groups. The loss function is the binary cross-entropy loss.
-    """
-
-    def predict(theta: np.ndarray, x: np.ndarray):
-        """
-        Prediction function for binary +1/-1 classification. The function is for use in inference and returns
-        sgn(theta^T x).
-        """
-        return np.sign(np.dot(theta.T, x))
-
-    def loss(theta: Union[cp.Variable, np.ndarray], xi: np.ndarray) -> Union[cp.Expression, float]:
-        """
-        Hinge loss function for the binary classification problem. The labels are either +1 or -1.
-        The loss function is defined as max(0, 1 - y * theta^T x)
-        """
-        data, label = xi[:-1], xi[-1]
-        if isinstance(theta, cp.Variable):
-            return cp.power(cp.maximum(0, 1 - label * cp.matmul(theta.T, data)), 2)
-            # return cp.exp(-label * cp.matmul(theta.T, data))
-        elif isinstance(theta, np.ndarray):
-            return max(0, 1 - label * np.dot(theta.T, data)) ** 2
-            # return np.clip(np.exp(-label * np.dot(theta.T, data)), 0, 1e8)
-
-    # generate the data
-    generator = np.random.default_rng(seed)
-    m = 60  # training data
-    n = 2000  # samples
-
-    # x = [1, x1, x2]
-    x = np.vstack((np.ones(m), generator.uniform(0, 1, m), generator.uniform(0, 1, m)))
-    # y = step(2x1 - x2 - 0.5)
-    y = 2 * x[1] - x[2] - 0.5
-    y = np.sign(y)
-    x += generator.normal(0, 0.1, x.shape)
-    data = np.vstack((x, y)).T
-    # put a uniform grid over the square
-    sz = int(np.sqrt(n / 2))
-    ls1 = np.linspace(np.min(x[1]) - 0.5, np.max(x[1]) + 0.5, sz)
-    ls2 = np.linspace(np.min(x[2]) - 0.5, np.max(x[2]) + 0.5, sz)
-    xx, yy = np.meshgrid(ls1, ls2)
-    samples = np.vstack((np.ones(sz * sz), xx.flatten(), yy.flatten()))
-
-    # combine every point with the -1 and 1 label
-    samples_1 = np.vstack((samples, np.ones(sz * sz))).T
-    samples_2 = np.vstack((samples, - np.ones(sz * sz))).T
-    samples = np.vstack((samples_1, samples_2))
-
-    # plot the training data together with the labels as a color
-    import matplotlib.pyplot as plt
-    plt.scatter(x[1], x[2], c=y)
-    # plt.show()
-
-    # plot the samples
-    plt.scatter(samples[:, 1], samples[:, 2], marker='.', alpha=0.5)
-    plt.show()
-
-    # create the CADRO object
-    cadro = SampleCadro(data.T, samples.T, loss_function=loss, seed=seed)
-    results = cadro.solve()
-
-    cadro.print_results(include_robust=True)
-
-
-
-if __name__ == '__main__':
-    main(0)

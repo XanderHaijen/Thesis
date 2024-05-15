@@ -6,6 +6,7 @@ from robust_optimization import RobustOptimization
 from one_dimension_cadro import CADRO1DLinearRegression
 from utils.data_generator import ScalarDataGenerator
 import pandas as pd
+import utils.multivariate_experiments as aux
 
 
 def experiment1(seed):
@@ -176,7 +177,6 @@ def experiment3(seed):
 
 
 def experiment3_loop(ellipsoid, type, ms, sigmas, nb_tries, rico, seed, excel=True):
-
     # create figures
     theta_fig, theta_axs = plt.subplots(len(ms), len(sigmas))
     alpha_fig, alpha_axs = plt.subplots(len(ms), len(sigmas))
@@ -479,7 +479,6 @@ def experiment45(seed):
         plt.show()
 
 
-
 def experiment6():
     """
     plot the loss function for the circle and the LJ ellipsoid for different values of m
@@ -494,7 +493,6 @@ def experiment6():
     lj_0 = np.array([6.6304, 17.6625, 25.8751, 18.4294, 6.4817, 4.5337, 4.4749])
     lj_0_downq = np.array([4.9547, 6.1798, 12.4730, 8.4875, 4.7309, 4.3703, 4.4199])
     lj_0_upq = np.array([9.8649, 36.0025, 108.5167, 34.9789, 10.9431, 5.4329, 4.5896])
-
 
     circ_star = np.array([6.7928, 7.0101, 7.4317, 7.1130, 7.3620, 7.2082, 4.4447])
     circ_star_downq = np.array([6.7928, 7.0101, 7.4317, 7.1130, 5.7603, 4.8139, 4.4071])
@@ -522,7 +520,8 @@ def experiment6():
     plt.show()
 
     plt.figure()
-    plt.errorbar(m, circ_star, yerr=[circ_star - circ_star_downq, circ_star_upq - circ_star], label=r"Circle, $\theta^*$", marker="o")
+    plt.errorbar(m, circ_star, yerr=[circ_star - circ_star_downq, circ_star_upq - circ_star],
+                 label=r"Circle, $\theta^*$", marker="o")
     plt.errorbar(m, circ_0, yerr=[circ_0 - circ_0_downq, circ_0_upq - circ_0], label=r"Circle, $\theta_0$", marker="o")
     plt.grid()
     plt.xlabel("m")
@@ -599,28 +598,33 @@ def experiment7(seed):
 
     # Experiment 7: plot a histogram of the values of theta_0 and theta_star
     for k in range(len(ellipses)):
-        ellipse = ellipses[k]
         plt.figure()
-        plt.hist(theta_0_array[k, :], bins=20, label=r"$\theta_0$", range=(-5, 12))
-        plt.hist(theta_star_array[k, :], bins=20, label=r"$\theta^*$", range=(-5, 12), rwidth=0.7)
-        plt.hist(noncollapse_array[k], bins=20, range=(-5, 12), rwidth=0.7)
+        hist_range = (min(np.min(theta_0_array[k, :]), np.min(theta_star_array[k, :])),
+                      max(np.max(theta_0_array[k, :]), np.max(theta_star_array[k, :])))
+        plt.hist(theta_0_array[k, :], bins=20, label=r"$\theta_0$", range=hist_range, alpha=0.5)
+        plt.hist(theta_star_array[k, :], bins=20, label=r"$\theta^\star$", range=hist_range, alpha=0.5)
+        plt.hist(noncollapse_array[k], bins=20, range=hist_range, rwidth=0.65, label=r"$\theta_r$")
         plt.legend()
         plt.grid()
         plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.xlabel(r"$\theta$")
+        plt.tight_layout()
         plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist.png")
         plt.show()
         print(f"For {'Circle' if k == 1 else 'Löwner-John ellipsoid'}: theta_r = {theta_r_array[k]}")
 
     # Experiment 7a: plot a histogram of the values of the test loss for theta_0 and theta_star
     for k in range(len(ellipses)):
-        ellipse = ellipses[k]
         plt.figure()
-        plt.hist(cost_0_array[k, :], bins=30, label=r"$J(\theta_0)$", range=(0, 40))
-        plt.hist(cost_star_array[k, :], bins=30, label=r"$J(\theta^*)$", rwidth=0.7, range=(0, 40))
-        plt.hist(robustcost_array[k], bins=30, range=(0, 40), rwidth=0.7)
+        hist_range = (min(np.min(cost_0_array[k, :]), np.min(cost_star_array[k, :])),
+                      max(np.max(cost_0_array[k, :]), np.max(cost_star_array[k, :])))
+        plt.hist(cost_0_array[k, :], bins=30, label=r"$R_T(\theta_0)$", range=hist_range, alpha=0.5)
+        plt.hist(cost_star_array[k, :], bins=30, label=r"$R_T(\theta^\star)$", alpha=0.5, range=hist_range)
+        plt.hist(robustcost_array[k], bins=30, range=hist_range, rwidth=0.65, label=r"$R_T(\theta_r)$")
         plt.legend()
         plt.grid()
         plt.title(f"{'Circle' if k == 1 else 'Löwner-John ellipsoid'}")
+        plt.xlabel("Test loss")
         plt.savefig(f"thesis_figures/1d_linreg/exp7_{k}_hist_testloss.png")
         plt.show()
         print(f"For {'Circle' if k == 1 else 'Löwner-John ellipsoid'}: cost_r = {cost_r_array[k]}")
@@ -632,6 +636,6 @@ if __name__ == "__main__":
     # experiment1(seed)
     # experiment2(seed)
     # experiment3(seed)
-    # experiment45(seed)
-    experiment6()
+    experiment45(seed)
+    # experiment6()
     # experiment7(seed)
