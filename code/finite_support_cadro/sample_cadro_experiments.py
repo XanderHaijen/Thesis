@@ -112,7 +112,8 @@ def linear_features_experiment(seed):
     plt.show()
 
 
-def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_samples: int, plot=False, verbose=False):
+def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_samples: int,
+                                   method: str = 'all', plot=False, verbose=False):
     """
     Test problem for the sampling cadro case: binary classification
     given points in a square [0, 1] x [0, 1], the goal is to find a linear classifier that identifies the boundary
@@ -123,6 +124,10 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
     :param plot: boolean, whether to plot the results
     :param verbose: boolean, whether to print the results
     """
+    if not isinstance(method, str):
+        raise ValueError("Method must be a string")
+    if method not in ['all', 'knn', 'band']:
+        raise ValueError("Method must be 'all', 'knn' or 'band'")
 
     # generate and set-up the data
     x = np.vstack((np.ones((m,)), generator.uniform(-1, 1, m), generator.uniform(-1, 1, m)))
@@ -141,48 +146,47 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
     samples = np.vstack((np.ones_like(xx.flatten()), xx.flatten(), yy.flatten(), xx.flatten() * yy.flatten()))
 
     # pre-processing of the support
-    samples_1 = list()
-    samples_0 = list()
+    if method == 'all':
+        samples_1 = np.vstack((samples, np.ones(samples.shape[1])))
+        samples_0 = np.vstack((samples, np.zeros(samples.shape[1])))
+        samples = np.hstack((samples_1, samples_0))
+        generator.shuffle(samples.T)
+    else:
+        samples_1 = list()
+        samples_0 = list()
+        if method == 'knn':
+            # Method 1: for every sample, find the k nearest training points. If the labels are not all the same,
+            # add both possibilities to the support
+            k = 5
+            for i in range(samples.shape[1]):
+                sample = samples[:, i]
+                distances = np.linalg.norm(x[1:] - sample[1:, np.newaxis], axis=0, ord=1)
+                idx = np.argsort(distances)
+                if np.all(y[idx[:k]] == 1):  # all training data points have label 1 -> add one point
+                    samples_1.append(sample)
+                elif np.all(y[idx[:k]] == 0):  # all training data points have label 0 -> add one point
+                    samples_0.append(sample)
+                else:  # add both possibilities
+                    samples_1.append(sample)
+                    samples_0.append(sample)
+        elif method == 'band':
+            # Method 2: get a band around the decision boundary
+            for i in range(samples.shape[1]):
+                if np.abs(samples[1, i] * samples[2, i]) <= 0.2:
+                    samples_1.append(samples[:, i])
+                    samples_0.append(samples[:, i])
+                elif samples[1, i] * samples[2, i] > 0.2:
+                    samples_1.append(samples[:, i])
+                else:
+                    samples_0.append(samples[:, i])
 
-    # Method 1: for every sample, find the k nearest training points. If the labels are not all the same,
-    # add both possibilities to the support
-    k = 5
-    for i in range(samples.shape[1]):
-        sample = samples[:, i]
-        distances = np.linalg.norm(x[1:] - sample[1:, np.newaxis], axis=0, ord=1)
-        idx = np.argsort(distances)
-        if np.all(y[idx[:k]] == 1):  # all training data points have label 1 -> add one point
-            samples_1.append(sample)
-        elif np.all(y[idx[:k]] == 0):  # all training data points have label 0 -> add one point
-            samples_0.append(sample)
-        else:  # add both possibilities
-            samples_1.append(sample)
-            samples_0.append(sample)
-
-    # Method 2: get a band around the decision boundary
-    # for i in range(samples.shape[1]):
-    #     if np.abs(samples[1, i] * samples[2, i]) <= 0.1:
-    #         samples_1.append(samples[:, i])
-    #         samples_0.append(samples[:, i])
-    #     elif samples[1, i] * samples[2, i] > 0.1:
-    #         samples_1.append(samples[:, i])
-    #     else:
-    #         samples_0.append(samples[:, i])
-
-    # add the labeled support points
-    samples_1 = np.vstack(samples_1).T
-    samples_1 = np.vstack((samples_1, np.ones(samples_1.shape[1])))
-    samples_0 = np.vstack(samples_0).T
-    samples_0 = np.vstack((samples_0, np.zeros(samples_0.shape[1])))
-    samples = np.hstack((samples_1, samples_0))
-    generator.shuffle(samples.T)
-
-    # Method 3: add all samples
-    # samples_1 = np.vstack((samples, np.ones(samples.shape[1])))
-    # samples_0 = np.vstack((samples, np.zeros(samples.shape[1])))
-    # samples = np.hstack((samples_1, samples_0))
-    # generator.shuffle(samples.T)
-
+        # add the labeled support points
+        samples_1 = np.vstack(samples_1).T
+        samples_1 = np.vstack((samples_1, np.ones(samples_1.shape[1])))
+        samples_0 = np.vstack(samples_0).T
+        samples_0 = np.vstack((samples_0, np.zeros(samples_0.shape[1])))
+        samples = np.hstack((samples_1, samples_0))
+        generator.shuffle(samples.T)
 
     # plot the samples
     if plot:
@@ -225,6 +229,10 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         y_lin = (- th[0] - th[1] * x_lin) / (th[2] + th[3] * x_lin)
         y_lin[np.abs(y_lin) > 1.5] = np.nan
         plt.plot(x_lin, y_lin, 'k--', label="Decision boundary")
+        plt.legend()
+        plt.xlabel('x1')
+        plt.ylabel('x2')
+        plt.tight_layout()
         plt.show()
 
     labels = np.sign(labels)
@@ -232,6 +240,9 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         # plot the samples together with the labels
         plt.figure()
         plt.scatter(samples[1], samples[2], c=labels, cmap='coolwarm', marker='o')
+        plt.xlabel('x1')
+        plt.ylabel('x2')
+        plt.tight_layout()
         plt.show()
 
     # accuracy
@@ -254,51 +265,50 @@ if __name__ == "__main__":
 
     # linear_features_experiment(seed)
 
-    m = [20, 40, 80, 160] #, 320, 640, 1280]
-    nb_samples = 200
-    nb_tries = 10
-    accuracies = np.zeros((len(m), nb_tries))
-    accuracies_0 = np.zeros((len(m), nb_tries))
-    collapses = np.zeros(len(m))
-    for i in range(len(m)):
-        with open("progress.txt", "a") as f:
-            f.write(f"{datetime.now()} - Running experiment for m = {m[i]}...\n")
-        for j in range(nb_tries):
-            accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples)
-            accuracies[i, j] = accuracy
-            accuracies_0[i, j] = accuracy_0
-            collapses[i] += collapse
+    m = [20, 40, 80, 160, 320, 640, 1280]
+    nb_samples = 2000
+    nb_tries = 300
+    for method in ['all', 'band']:
+        accuracies = np.zeros((len(m), nb_tries))
+        accuracies_0 = np.zeros((len(m), nb_tries))
+        collapses = np.zeros(len(m))
+        for i in range(len(m)):
+            with open("progress.txt", "a") as f:
+                f.write(f"{datetime.now()} - Running experiment for m = {m[i]}...\n")
+            for j in range(nb_tries):
+                accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples, method, plot=True)
+                accuracies[i, j] = accuracy
+                accuracies_0[i, j] = accuracy_0
+                collapses[i] += collapse
 
-    median_accuracies = np.median(accuracies, axis=1)
-    p75_accuracies = np.percentile(accuracies, 75, axis=1)
-    p25_accuracies = np.percentile(accuracies, 25, axis=1)
+        median_accuracies = np.median(accuracies, axis=1)
+        p75_accuracies = np.percentile(accuracies, 75, axis=1)
+        p25_accuracies = np.percentile(accuracies, 25, axis=1)
 
-    median_accuracies_0 = np.median(accuracies_0, axis=1)
-    p75_accuracies_0 = np.percentile(accuracies_0, 75, axis=1)
-    p25_accuracies_0 = np.percentile(accuracies_0, 25, axis=1)
+        median_accuracies_0 = np.median(accuracies_0, axis=1)
+        p75_accuracies_0 = np.percentile(accuracies_0, 75, axis=1)
+        p25_accuracies_0 = np.percentile(accuracies_0, 25, axis=1)
 
-    plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
-                    fmt='o-', label=r'Accuracy at $\theta^\star$')
-    plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
-                    fmt='o-', label=r'Accuracy at $\theta_0$')
-    plt.xlabel('Number of training samples')
-    plt.ylabel('Accuracy')
-    plt.xscale('log')
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-    plt.show()
-    plt.savefig("accuracy_hyperbolic_features.png")
+        plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
+                        fmt='o-', label=r'Accuracy at $\theta^\star$')
+        plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
+                        fmt='o-', label=r'Accuracy at $\theta_0$')
+        plt.xlabel('Number of training samples')
+        plt.ylabel('Accuracy')
+        plt.xscale('log')
+        plt.legend()
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(f"accuracy_hyperbolic_features_{method}.png")
 
-    # create bar plot for the collapses
-    collapses /= nb_tries
-    plt.plot(m, collapses, 'o-')
-    plt.xlabel('Number of training samples')
-    plt.ylabel('Collapse rate')
-    plt.xscale('log')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-    plt.savefig("collapse_hyperbolic_features.png")
+        # create bar plot for the collapses
+        collapses /= nb_tries
+        plt.plot(m, collapses, 'o-')
+        plt.xlabel('Number of training samples')
+        plt.ylabel('Collapse rate')
+        plt.xscale('log')
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig("collapse_hyperbolic_features_{method}.png")
 
     plt.rcParams.update({'font.size': 10})

@@ -63,7 +63,7 @@ class LeastSquaresCadro(ContinuousCADRO):
         robust_opt.solve_least_squares()
         self.theta_r = np.reshape(robust_opt.theta, (-1, 1))
 
-    def _find_theta0_batch(self, data_batch_indices: np.ndarray):
+    def _find_theta0_batch(self, data_batch_indices: np.ndarray, m_max: int = 5000):
         """
         Find theta_0 for the given batch of data indices. Use the sample average approximation (SAA) method.
         :param data_batch_indices: indices of the data to use for the SAA method
@@ -71,6 +71,8 @@ class LeastSquaresCadro(ContinuousCADRO):
         """
         theta0 = cp.Variable((self.data.shape[0] - 1, 1))
         train_data = self.data[:, data_batch_indices]
+        if len(data_batch_indices) > m_max:  # to avoid solver issues
+            train_data = train_data[:, :m_max]
         loss = self._loss_function(theta0, train_data, cvxpy=True)
         problem = cp.Problem(cp.Minimize(loss))
         problem.solve(solver=self.solver)

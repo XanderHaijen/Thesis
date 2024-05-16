@@ -56,6 +56,7 @@ def experiment1(seed):
                     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
                              MDG.normal_disturbance(generator, sigma, 1000, True)
                     test_data = np.vstack([test_x, test_y])
+                    MDG.contain_in_ellipsoid(generator, test_data, ellipsoid, slope)
                     for k in range(nb_tries):
                         # sample uniformly from the unit hypercube
                         x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
@@ -136,7 +137,7 @@ def experiment1(seed):
 def experiment2(seed):
     generator = np.random.default_rng(seed)
     d = 5
-    m = 15
+    m = 50
     sigma = 1
     a, b = 0, 10
 
@@ -157,12 +158,14 @@ def experiment2(seed):
     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
              MDG.normal_disturbance(generator, sigma, 1000, True)
     test_data = np.vstack([test_x, test_y])
+    MDG.contain_in_ellipsoid(generator, test_data, ellipsoid, slope)
 
     while True:
         x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
         y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
             MDG.normal_disturbance(generator, sigma, m, True)
         data = np.vstack((x, y))
+        MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
         # read from file
         # data = np.loadtxt("training_data.csv", delimiter=",")
 
@@ -204,8 +207,8 @@ def experiment2(seed):
     losses = problem.loss_array(test_data, 'theta_0')
 
     # plot the empirical CDF
-    x = problem.thresholds
-    y = results['alpha']
+    x = np.append(problem.thresholds, problem.eta_bar)
+    y = np.append(results['alpha'], 0)
     plt.plot(x, 1 - y, label='Empirical CDF')
 
     # plot a cdf histogram of the losses
@@ -213,13 +216,16 @@ def experiment2(seed):
     if problem.eta_bar > x[-1]:
         x = np.append(x, problem.eta_bar)
     y = np.arange(1, len(x) + 1) / len(x)
-    plt.plot(x, y, label='CDF of loss_0')
+    plt.plot(x, y, label=r'CDF of $J(\xi, \theta_0)$')
 
     plt.xlabel('Loss')
     plt.ylabel('CDF')
     plt.title(f"d = {d}")
+    plt.grid()
     plt.legend()
+    plt.savefig("thesis_figures/stoch_dom/empirical_cdf.png")
     plt.show()
+
 
     loss_0 = problem.test_loss(test_data, 'theta_0')
     loss_r = problem.test_loss(test_data, 'theta_r')

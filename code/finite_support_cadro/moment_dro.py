@@ -350,7 +350,7 @@ def moment_dro_tester(seed):
     # generate data
     n = 150
     d = 5
-    a, b = -1, 1
+    a, b = -2, 2
     assert a < b
     sigma = 1
 
