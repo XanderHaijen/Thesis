@@ -1,11 +1,12 @@
-from typing import List, Callable
-
+from typing import List, Callable, Union
+import cvxpy as cp
 from multiple_dimension_cadro import LeastSquaresCadro
 from ellipsoids import Ellipsoid
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
+from sample_cadro import SampleCadro
+from utils.sample_experiments import regularizer
 
 def f(x):
     # return np.sin(2 * np.pi * x)
@@ -45,17 +46,64 @@ def evaluate(theta: np.ndarray, basis_functions: Callable[[np.ndarray, int], flo
 
 def fit_curve(x, y, x_test, y_test,
               basis_functions: Callable[[np.ndarray, int], float], n: int,
-              phi_min: np.ndarray, phi_max: np.ndarray, f_min: float, f_max: float):
-    training_data = ls_matrix(x, y, basis_functions, n)
-    ellipsoid = Ellipsoid.ellipse_from_corners(phi_min, phi_max, f_min, f_max, theta=np.zeros((n,)))
-    problem = LeastSquaresCadro(training_data, ellipsoid)
-    problem.solve()
-    problem.set_theta_r()
+              phi_min: np.ndarray = None, phi_max: np.ndarray = None, f_min: float = None, f_max: float = None,
+              samples=None):
+    """
+    Fit a curve to the data using the given basis functions and the number of basis functions.
+    :param x: training data
+    :param y: training labels (function values)
+    :param x_test: test data
+    :param y_test: test labels (function values)
+    :param basis_functions: basis functions as a function of x and i
+    :param n: number of basis functions to use
+    :param phi_min: minimum values for the ellipsoid (minimal value for basis functions)
+    :param phi_max: maximum values for the ellipsoid (maximal value for basis functions)
+    :param f_min: minimal value for the function
+    :param f_max: maximal value for the function
+    :param samples: gives the sample set for use in SampleCadro
+    if all four bounds are given, then classical CADRO with ellipsoidal support is used. Otherwise, SampleCadro is used
+    and the samples are given as input.
+    :return: results of the fitting
+    """
+    if samples is None:
+        assert phi_min is not None and phi_max is not None and f_min is not None and f_max is not None, \
+        "phi_min, phi_max, f_min, f_max should be given"
 
-    test_data = ls_matrix(x_test, y_test, basis_functions, n)
-    test_loss = problem.test_loss(test_data)
-    test_loss_0 = problem.test_loss(test_data, type='theta_0')
-    test_loss_r = problem.test_loss(test_data, type='theta_r')
+        training_data = ls_matrix(x, y, basis_functions, n)
+        ellipsoid = Ellipsoid.ellipse_from_corners(phi_min, phi_max, f_min, f_max, theta=np.zeros((n,)))
+        problem = LeastSquaresCadro(training_data, ellipsoid)
+        problem.solve()
+        problem.set_theta_r()
+
+        test_data = ls_matrix(x_test, y_test, basis_functions, n)
+        test_loss = problem.test_loss(test_data)
+        test_loss_0 = problem.test_loss(test_data, type='theta_0')
+        test_loss_r = problem.test_loss(test_data, type='theta_r')
+    else:
+        training_data = ls_matrix(x, y, basis_functions, n)
+        f_values = np.linspace(f_min, f_max, 10)
+        for i, f in enumerate(f_values):
+            if i == 0:
+                sample_data = ls_matrix(samples, np.full((len(samples),), f), basis_functions, n)
+            else:
+                sample_data = np.hstack((sample_data, ls_matrix(samples, np.full((len(samples),), f), basis_functions, n)))
+
+        def loss(theta: Union[cp.Variable, np.ndarray], xi: np.ndarray) -> Union[cp.Expression, float]:
+            if isinstance(theta, cp.Variable):
+                return cp.square(cp.matmul(theta.T, xi[:-1]) - xi[-1])
+            elif isinstance(theta, np.ndarray):
+                return np.square(np.matmul(theta, xi[:-1]) - xi[-1])
+
+        problem = SampleCadro(training_data, sample_data, loss, variable_dimension=np.shape(training_data)[0] - 1,
+                              regularization=regularizer)
+
+        problem.solve()
+
+        test_data = ls_matrix(x_test, y_test, basis_functions, n)
+        test_loss = problem.test_loss(test_data)
+        test_loss_0 = problem.test_loss(test_data, theta='theta_0')
+        test_loss_r = problem.test_loss(test_data, theta='theta_r')
+
 
     results = problem.results
     results.update({"test_loss": test_loss})
@@ -111,7 +159,13 @@ def experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min,
         phi_max_array = np.full((n,), phi_max)
         if verbose:
             print("n = ", n)
-        results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+        # enable for regular CADRO
+        # results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+        # enable for SampleCADRO
+        samples = np.linspace(a, b, 250)
+        results = fit_curve(x, y, x_test, y_test, basis_functions, n, samples=samples, f_min=f_min, f_max=f_max)
 
         if verbose:
             print("test_loss_0: ", results["test_loss_0"])
@@ -186,7 +240,13 @@ def experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min,
             phi_max_array = np.full((n,), phi_max)
             if verbose:
                 print("n = ", n)
-            results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+            # enable for regular CADRO
+            # results = fit_curve(x, y, x_test, y_test, basis_functions, n, phi_min_array, phi_max_array, f_min, f_max)
+
+            # enable for SampleCADRO
+            samples = np.linspace(a, b, 250)
+            results = fit_curve(x, y, x_test, y_test, basis_functions, n, samples=samples, f_min=f_min, f_max=f_max)
 
             if verbose:
                 print("test_loss_0: ", results["test_loss_0"])
@@ -323,29 +383,28 @@ def experiment4(seed):
     plt.savefig("thesis_figures/curve_fitting/experiment4.png")
     plt.show()
 
-
 if __name__ == "__main__":
-    # seed = 0
-    # m = 40
-    # a, b = 0, 1
-    # nb_tries = 100
-    # plt.rcParams.update({'font.size': 15})
-    # interpolation = "chebyshev"
+    seed = 0
+    m = 40
+    a, b = 0, 1
+    nb_tries = 100
+    plt.rcParams.update({'font.size': 15})
+    interpolation = "chebyshev"
     # # bookkeeping for experiment 2
     # results = pd.DataFrame(columns=["function", "collapse_dim_mean", "collapse_dim_std", "collapse_dim_inf",
     #                                 "test_loss_0_p25", "test_loss_0_median", "test_loss_0_p75",
     #                                 "test_loss_r_p25", "test_loss_r_median", "test_loss_r_p75"])
     #
-    # n = 4  # number of basis functions
-    # d = n + 1
+    n = 4  # number of basis functions
+    d = n + 1
     # # basis functions
     # # sin(n * pi * x), n=1,..,d-1
-    # basis_functions = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
+    basis_functions = lambda x, i: np.sin(i * np.pi * x) if i > 0 else np.ones_like(x)
     # # trig function
-    # f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
-    # f_min, f_max = -1.5, 1.5
-    # phi_min, phi_max = -1, 1
-    # sigma = 0.25
+    f = lambda x: np.sin(2 * np.pi * x) + 0.3 * np.sin(4 * np.pi * x) + 0.5 * np.sin(6 * np.pi * x)
+    f_min, f_max = -1.5, 1.5
+    phi_min, phi_max = -1, 1
+    sigma = 0.25
     #
     # experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
     #             "trigonometric", nodes=interpolation)
@@ -353,10 +412,12 @@ if __name__ == "__main__":
     # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
     #                       "trigonometric", results, nb_tries, nodes=interpolation)
     #
-    # # hat function
-    # f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
-    # f_min, f_max = -0.5, 1.5
+    # hat function
+    f = lambda x: np.maximum(0, 1 - np.abs(2 * x - 1))
+    f_min, f_max = -0.5, 1.5
     #
+    experiment1(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max,
+                "hat", nodes=interpolation)
     # results = experiment2(seed, basis_functions, m, sigma, a, b, f, f_min, f_max, phi_min, phi_max, "hat",
     #                       results, nb_tries, nodes=interpolation)
     #

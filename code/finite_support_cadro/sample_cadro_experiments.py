@@ -135,7 +135,7 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
     # y = step(2x1 - x2 - 0.5)
     y = x[1] * x[2]
     y = np.where(y > 0, 1, 0)
-    x += generator.normal(0, 0.1, x.shape)
+    x += generator.normal(0, 0.35, x.shape)
     data = np.vstack((x, y)).T
 
     # put a uniform grid over the square for the sample points
@@ -144,6 +144,9 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
     ls2 = np.linspace(np.min(x[2]) - 0.25, np.max(x[2]) + 0.25, sz)
     xx, yy = np.meshgrid(ls1, ls2)
     samples = np.vstack((np.ones_like(xx.flatten()), xx.flatten(), yy.flatten(), xx.flatten() * yy.flatten()))
+
+    x_range = (np.min(x[1]) - 0.25, np.max(x[1]) + 0.25)
+    y_range = (np.min(x[2]) - 0.25, np.max(x[2]) + 0.25)
 
     # pre-processing of the support
     if method == 'all':
@@ -157,7 +160,7 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         if method == 'knn':
             # Method 1: for every sample, find the k nearest training points. If the labels are not all the same,
             # add both possibilities to the support
-            k = 5
+            k = 4
             for i in range(samples.shape[1]):
                 sample = samples[:, i]
                 distances = np.linalg.norm(x[1:] - sample[1:, np.newaxis], axis=0, ord=1)
@@ -188,6 +191,7 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         samples = np.hstack((samples_1, samples_0))
         generator.shuffle(samples.T)
 
+
     # plot the samples
     if plot:
         plt.figure()
@@ -196,13 +200,15 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         # plot the training data together with the labels as a color
         plt.scatter(x[1], x[2], c=y, cmap='coolwarm', marker='o')
         # plot the decision boundary
-        x_lin = np.linspace(-1.3, 1.3, 50)
-        plt.plot(np.zeros(50), x_lin, 'k--', label="Decision boundary")
-        plt.plot(x_lin, np.zeros(50), 'k--')
+        x_lin = np.linspace(x_range[0], x_range[1], 50)
+        y_lin = np.linspace(y_range[0], y_range[1], 50)
+        plt.plot(np.zeros_like(y_lin), y_lin, 'k--', label="Decision boundary")
+        plt.plot(x_lin, np.zeros_like(x_lin), 'k--')
         plt.xlabel('x1')
         plt.ylabel('x2')
         plt.legend()
         plt.tight_layout()
+        plt.savefig(f'Labeled_Support_{method}.png')
         plt.show()
 
     # create the CADRO object
@@ -225,14 +231,16 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
 
         # plot the decision boundary
         th = results["theta"]
-        x_lin = np.linspace(-1.5, 1.5, 500)
+        x_lin = np.linspace(x_range[0], x_range[1], 50)
         y_lin = (- th[0] - th[1] * x_lin) / (th[2] + th[3] * x_lin)
-        y_lin[np.abs(y_lin) > 1.5] = np.nan
+        y_lin[y_lin > y_range[1]] = np.inf
+        y_lin[y_lin < y_range[0]] = - np.inf
         plt.plot(x_lin, y_lin, 'k--', label="Decision boundary")
         plt.legend()
         plt.xlabel('x1')
         plt.ylabel('x2')
         plt.tight_layout()
+        plt.savefig(f'Predictions_{method}.png')
         plt.show()
 
     labels = np.sign(labels)
@@ -243,6 +251,7 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
         plt.xlabel('x1')
         plt.ylabel('x2')
         plt.tight_layout()
+        plt.savefig(f'Predicted_labels_{method}.png')
         plt.show()
 
     # accuracy
@@ -258,6 +267,30 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
     return accuracy, accuracy_0, collapse
 
 
+def plot_discrete_support():
+    plt.rcParams.update({'font.size': 15})
+    plt.grid()
+    # plot an ellipse
+    plt.gca().add_artist(plt.Circle((0, 0), 1, fill=False, color='black', label=r'Support'))
+    plt.xlim(-1.5, 1.5)
+    plt.ylim(-1.5, 1.5)
+
+    # put a meshgrid on [-1, 1] x [-1, 1]
+    grid = np.linspace(-1, 1, 26)
+    X, Y = np.meshgrid(grid, grid)
+    points = np.vstack([X.ravel(), Y.ravel()]).T
+    # plot the points
+    indices = np.where(np.linalg.norm(points, axis=1) < 1)
+    plt.scatter(points[indices, 0], points[indices, 1], color='blue', label=r'Discretized',
+                marker='.', alpha=0.5)
+    plt.xticks([-1, 0, 1])
+    plt.yticks([-1, 0, 1])
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
     seed = 0
     plt.rcParams.update({'font.size': 15})
@@ -266,9 +299,10 @@ if __name__ == "__main__":
     # linear_features_experiment(seed)
 
     m = [20, 40, 80, 160, 320, 640, 1280]
+    # m = [80]
     nb_samples = 2000
     nb_tries = 300
-    for method in ['all', 'band']:
+    for method in ['all', 'band', 'knn']:
         accuracies = np.zeros((len(m), nb_tries))
         accuracies_0 = np.zeros((len(m), nb_tries))
         collapses = np.zeros(len(m))
@@ -276,7 +310,7 @@ if __name__ == "__main__":
             with open("progress.txt", "a") as f:
                 f.write(f"{datetime.now()} - Running experiment for m = {m[i]}...\n")
             for j in range(nb_tries):
-                accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples, method, plot=True)
+                accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples, method)
                 accuracies[i, j] = accuracy
                 accuracies_0[i, j] = accuracy_0
                 collapses[i] += collapse
@@ -289,6 +323,7 @@ if __name__ == "__main__":
         p75_accuracies_0 = np.percentile(accuracies_0, 75, axis=1)
         p25_accuracies_0 = np.percentile(accuracies_0, 25, axis=1)
 
+        plt.figure()
         plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
                         fmt='o-', label=r'Accuracy at $\theta^\star$')
         plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
@@ -302,6 +337,7 @@ if __name__ == "__main__":
         plt.savefig(f"accuracy_hyperbolic_features_{method}.png")
 
         # create bar plot for the collapses
+        plt.figure()
         collapses /= nb_tries
         plt.plot(m, collapses, 'o-')
         plt.xlabel('Number of training samples')
@@ -309,6 +345,6 @@ if __name__ == "__main__":
         plt.xscale('log')
         plt.grid()
         plt.tight_layout()
-        plt.savefig("collapse_hyperbolic_features_{method}.png")
+        plt.savefig(f"collapse_hyperbolic_features_{method}.png")
 
     plt.rcParams.update({'font.size': 10})
