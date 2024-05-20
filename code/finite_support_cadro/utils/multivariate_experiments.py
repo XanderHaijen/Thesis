@@ -61,15 +61,17 @@ def plot_loss_m(gca,
                 mean_loss_0, upper_bound_0, lower_bound_0,
                 mean_loss_star, upper_bound_star, lower_bound_star,
                 mean_loss_dro, upper_bound_dro, lower_bound_dro, m,
-                label_dro = "DRO", label_star = "CADRO", label_0 = "SAA",
-                title=None, scale='log'):
+                label_dro="DRO", label_star="CADRO", label_0="SAA",
+                title=None, scale='log', colors=None):
+    if colors is None:
+        colors = ['orange', 'b', 'g']
     gca.errorbar(m, mean_loss_0, yerr=[mean_loss_0 - lower_bound_0, upper_bound_0 - mean_loss_0], label=label_0,
-                 color='orange', fmt='o-')
+                 color=colors[0], fmt='o-')
     gca.errorbar(m, mean_loss_star, yerr=[mean_loss_star - lower_bound_star, upper_bound_star - mean_loss_star],
-                 label=label_star, color='b', fmt='o-')
+                 label=label_star, color=colors[1], fmt='o-')
     if mean_loss_dro is not None:
         gca.errorbar(m, mean_loss_dro, yerr=[mean_loss_dro - lower_bound_dro, upper_bound_dro - mean_loss_dro],
-                     label=label_dro, color='g', fmt='o-')
+                     label=label_dro, color=colors[2], fmt='o-')
     gca.set_xlabel("m")
     gca.set_ylabel("Loss")
     if title is not None:
@@ -176,9 +178,8 @@ def rotation_matrix(d, theta, components: list):
 
 
 def subgaussian_parameter(d, a, b, ubw, lbw, slope: np.ndarray = None, C=None):
-
     if C is None and slope is not None:
-        slope = slope**2 + 1
+        slope = slope ** 2 + 1
         C = np.sum(slope)
     if C is None and slope is None:
         raise ValueError("Either C or slope should be provided")

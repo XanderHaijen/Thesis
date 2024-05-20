@@ -15,14 +15,14 @@ def experiment1(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [5, 15]
-    a, b = 0, 10
+    dimensions = [15]
+    a, b = -5, 5
     assert b > a
     generator = np.random.default_rng(seed)
-    nb_tries = 200
+    nb_tries = 100
 
-    data_size = lambda d: [2 * d, 5 * d, 8 * d, 10 * d, 15 * d]
-    sigmas = [1, 2]
+    data_size = lambda d: [d, 2 * d, 3 * d, 4 * d, 5 * d, 6 * d]
+    sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
         ms = data_size(d)
@@ -30,7 +30,7 @@ def experiment1(seed):
 
         with open('progress.txt', 'a') as f:
             f.write(f"{datetime.now()} - d = {d}\n")
-        emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
+        emp_slope = slope + np.clip(generator.normal(scale=1, size=(d - 1,)), -1, 1)  # random disturbance
         lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
                                             scaling_factor=1.05)
         lj.type = "LJ"
@@ -38,9 +38,11 @@ def experiment1(seed):
         delta_w = (b - a) / 2
         ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
-        ses.type = "SES"
+        ses.type = "SCC"
 
         ellipsoids = [lj, ses]
+
+        fig, ax = plt.subplots()
 
         for ellipsoid in ellipsoids:
             test_loss_0 = np.zeros((len(ms), len(sigmas), nb_tries))
@@ -85,36 +87,43 @@ def experiment1(seed):
 
                     # plot the loss histograms
                     # remove outliers
-                    valid_indices = np.where(test_loss_0[i, j, :] < 10 * np.median(test_loss_0[i, j, :]))[0]
-                    loss_0_plot = test_loss_0[i, j, valid_indices]
-                    loss_stoch_dom_plot = test_loss_stoch_dom[i, j, valid_indices]
+                    # valid_indices = np.where(test_loss_0[i, j, :] < 10 * np.median(test_loss_0[i, j, :]))[0]
+                    # loss_0_plot = test_loss_0[i, j, valid_indices]
+                    # loss_stoch_dom_plot = test_loss_stoch_dom[i, j, valid_indices]
+                    #
+                    # plt.figure()
+                    # aux.plot_loss_histograms(plt.gca(), loss_0_plot, loss_stoch_dom_plot, test_loss_r[i, j],
+                    #                          bins=20)
+                    # plt.tight_layout()
+                    # plt.savefig(
+                    #     f"loss_hist_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
+                    # plt.close()
+                    #
+                    # # save the losses to file
+                    # with open('results.txt', 'a') as f:
+                    #     f.write(f"{datetime.now()} - d = {d}, ellipsoid = {ellipsoid.type}, sigma = {sigma}, m = {m}\n")
+                    #     f.write(f"Loss 0: {np.median(test_loss_0[i, j, :])} ("
+                    #             f"{np.percentile(test_loss_0[i, j, :], 25)}, "
+                    #             f"{np.percentile(test_loss_0[i, j, :], 75)})\n")
+                    #     f.write(f"Loss star: {np.median(test_loss_star[i, j, :])} ("
+                    #             f"{np.percentile(test_loss_star[i, j, :], 25)}, "
+                    #             f"{np.percentile(test_loss_star[i, j, :], 75)})\n")
+                    #     f.write(f"Loss stoch dom: {np.median(test_loss_stoch_dom[i, j, :])} ("
+                    #             f"{np.percentile(test_loss_stoch_dom[i, j, :], 25)}, "
+                    #             f"{np.percentile(test_loss_stoch_dom[i, j, :], 75)})\n")
+                    #     f.write(f"Loss r: {test_loss_r[:, j]}\n")
+                    #     f.write("---------------------------------------------------------------\n")
 
-                    plt.figure()
-                    aux.plot_loss_histograms(plt.gca(), loss_0_plot, loss_stoch_dom_plot, test_loss_r[i, j],
-                                             bins=20)
-                    plt.tight_layout()
-                    plt.savefig(
-                        f"loss_hist_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
-                    plt.close()
-
-                    # save the losses to file
-                    with open('results.txt', 'a') as f:
-                        f.write(f"{datetime.now()} - d = {d}, ellipsoid = {ellipsoid.type}, sigma = {sigma}, m = {m}\n")
-                        f.write(f"Loss 0: {np.median(test_loss_0[i, j, :])} ("
-                                f"{np.percentile(test_loss_0[i, j, :], 25)}, "
-                                f"{np.percentile(test_loss_0[i, j, :], 75)})\n")
-                        f.write(f"Loss star: {np.median(test_loss_star[i, j, :])} ("
-                                f"{np.percentile(test_loss_star[i, j, :], 25)}, "
-                                f"{np.percentile(test_loss_star[i, j, :], 75)})\n")
-                        f.write(f"Loss stoch dom: {np.median(test_loss_stoch_dom[i, j, :])} ("
-                                f"{np.percentile(test_loss_stoch_dom[i, j, :], 25)}, "
-                                f"{np.percentile(test_loss_stoch_dom[i, j, :], 75)})\n")
-                        f.write(f"Loss r: {test_loss_r[:, j]}\n")
-                        f.write("---------------------------------------------------------------\n")
+            # save the losses to file
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_0.npy", test_loss_0)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_star.npy", test_loss_star)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_stoch_dom.npy", test_loss_stoch_dom)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_r.npy", test_loss_r)
 
             # plot the average loss in function of m for every sigma
+            ellipsoid_type = ellipsoid.type
+            colors = ['orange', 'b', 'g', 'black'] if ellipsoid_type == "LJ" else ['r', 'purple', 'brown', 'grey']
             for j, sigma in enumerate(sigmas):
-                fig, ax = plt.subplots()
                 aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
                                 np.percentile(test_loss_0[:, j, :], 75, axis=1),
                                 np.percentile(test_loss_0[:, j, :], 25, axis=1),
@@ -124,12 +133,29 @@ def experiment1(seed):
                                 np.median(test_loss_stoch_dom[:, j, :], axis=1),
                                 np.percentile(test_loss_stoch_dom[:, j, :], 75, axis=1),
                                 np.percentile(test_loss_stoch_dom[:, j, :], 25, axis=1),
-                                ms, title=None, label_dro="stoch. dom.", scale='linear')
+                                ms, title=None, scale='linear', label_star=f"CADRO ({ellipsoid_type})",
+                                label_0=f"SAA ({ellipsoid_type})", label_dro=f"Stoch. Dom. ({ellipsoid_type})",
+                                colors=colors)
 
-                plt.tight_layout()
-                plt.savefig(
-                    f"loss_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
-                plt.close()
+            # draw horizontal line for the robust loss
+            ax.axhline(np.median(test_loss_r[:, 0]), color=colors[3], linestyle='dashed', linewidth=1,
+                       label=f"Robust loss ({ellipsoid_type})")
+
+        # set ylim to the largest value for the dro losses
+        bottom = min(np.min(np.percentile(test_loss_stoch_dom, 25, axis=2)),
+                        np.min(np.percentile(test_loss_star, 25, axis=2)))
+        ax.set_ylim(bottom=bottom)
+        top = max(np.max(np.percentile(test_loss_stoch_dom, 75, axis=2)),
+                  np.max(np.percentile(test_loss_star, 75, axis=2)))
+        ax.set_ylim(top=top)
+
+        plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+        plt.grid()
+        plt.xlabel('m')
+        plt.ylabel('Loss')
+        plt.savefig(
+            f"loss_m_all_d{d}.png")
+        plt.close()
 
     plt.rcParams.update({'font.size': 10})
 
@@ -160,33 +186,14 @@ def experiment2(seed):
     test_data = np.vstack([test_x, test_y])
     MDG.contain_in_ellipsoid(generator, test_data, ellipsoid, slope)
 
-    while True:
-        x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
-        y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
-            MDG.normal_disturbance(generator, sigma, m, True)
-        data = np.vstack((x, y))
-        MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
-        # read from file
-        # data = np.loadtxt("training_data.csv", delimiter=",")
-
-        problem = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes)
-        problem.set_theta_r()
-        results = problem.solve()
-
-        # use this code to generate a non-binary decision ------------------------------------
-        # loss_r = problem.test_loss(test_data, 'theta_r')
-        # loss_0 = problem.test_loss(test_data, 'theta_0')
-        # loss = problem.test_loss(test_data, 'theta')
-        # if np.abs(loss_r - loss) > 0.1 * np.abs(loss) and np.abs(loss_0 - loss) > 0.1 * np.abs(loss):
-        # save training data to file
-        # np.savetxt("training_data.csv", data, delimiter=",")
-        # break
-        # else:
-        #     print("Retrying")
-        # ---------------------------------------------------
-
-        if True:
-            break
+    x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, m) + a
+    y = np.array([np.dot(x[:, i], slope) for i in range(m)]) + \
+        MDG.normal_disturbance(generator, sigma, m, True)
+    data = np.vstack((x, y))
+    MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
+    problem = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes)
+    problem.set_theta_r()
+    results = problem.solve()
 
     lambdas, alphas = results["lambda"], results["alpha"]
     nodes = problem.thresholds
@@ -227,18 +234,8 @@ def experiment2(seed):
     plt.show()
 
 
-    loss_0 = problem.test_loss(test_data, 'theta_0')
-    loss_r = problem.test_loss(test_data, 'theta_r')
-    loss = problem.test_loss(test_data, 'theta')
-    dist_0 = np.linalg.norm(loss_0 - loss) / np.linalg.norm(loss)
-    dist_r = np.linalg.norm(loss_r - loss) / np.linalg.norm(loss)
-    print(f"Distance between l(theta_0) and l(theta_star): {dist_0}")
-    print(f"Distance between l(theta_r) and l(theta_star): {dist_r}")
-    print(f"l(theta_0) = {results['loss_0']} - l(theta_r) = {results['loss_r']} - l(theta_star) = {results['loss']}")
-    print(f"eta_bar = {problem.eta_bar}")
-
 
 if __name__ == "__main__":
     seed = 0
-    # experiment1(seed)
-    experiment2(seed)
+    experiment1(seed)
+    # experiment2(seed)
