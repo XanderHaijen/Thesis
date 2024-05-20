@@ -72,8 +72,7 @@ def experiment1(seed):
                         problem.solve()
 
                         # solve the moment DRO problem
-                        nodes = np.linspace(0, 0.25, 50)
-                        nodes = np.append(nodes, 1)
+                        nodes = np.linspace(0, 1, 40)
                         stoch_dominance = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes,
                                                                    solver=cp.MOSEK)
                         stoch_dominance.solve()
