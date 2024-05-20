@@ -6,7 +6,7 @@ import cvxpy as cp
 import warnings
 
 
-class SampleCadro():
+class SampleCadro:
     """
     Continuous CADRO for non-quadratic loss functions and/or non-ellipsoidal support sets. The problem is approximated
     by a sample-based approach.

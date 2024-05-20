@@ -231,11 +231,17 @@ def hyperbolic_features_experiment(generator: np.random.Generator, m: int, nb_sa
 
         # plot the decision boundary
         th = results["theta"]
-        x_lin = np.linspace(x_range[0], x_range[1], 50)
+        x_lin = np.linspace(x_range[0], x_range[1], 100)
         y_lin = (- th[0] - th[1] * x_lin) / (th[2] + th[3] * x_lin)
         y_lin[y_lin > y_range[1]] = np.inf
         y_lin[y_lin < y_range[0]] = - np.inf
-        plt.plot(x_lin, y_lin, 'k--', label="Decision boundary")
+        # find the first and last index where y_lin is infinite
+        idx = np.where(np.isinf(y_lin))[0]
+        y_lin[idx[0]] = y_range[1]
+        y_lin[idx[-1]] = y_range[0]
+        # insert the boundary points at the first and last index
+        plt.plot(x_lin[:idx[0] + 1], y_lin[:idx[0] + 1], 'k--', label="Decision boundary")
+        plt.plot(x_lin[idx[-1]:], y_lin[idx[-1]:], 'k--')
         plt.legend()
         plt.xlabel('x1')
         plt.ylabel('x2')
@@ -298,10 +304,10 @@ if __name__ == "__main__":
 
     # linear_features_experiment(seed)
 
-    m = [20, 40, 80, 160, 320, 640, 1280]
-    # m = [80]
+    # m = [20, 40, 80, 160, 320, 640, 1280]
+    m = [80]
     nb_samples = 2000
-    nb_tries = 300
+    nb_tries = 1
     for method in ['all', 'band', 'knn']:
         accuracies = np.zeros((len(m), nb_tries))
         accuracies_0 = np.zeros((len(m), nb_tries))
@@ -310,7 +316,8 @@ if __name__ == "__main__":
             with open("progress.txt", "a") as f:
                 f.write(f"{datetime.now()} - Running experiment for m = {m[i]}...\n")
             for j in range(nb_tries):
-                accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples, method)
+                accuracy, accuracy_0, collapse = hyperbolic_features_experiment(generator, m[i], nb_samples, method,
+                                                                                plot=True)
                 accuracies[i, j] = accuracy
                 accuracies_0[i, j] = accuracy_0
                 collapses[i] += collapse
@@ -323,28 +330,28 @@ if __name__ == "__main__":
         p75_accuracies_0 = np.percentile(accuracies_0, 75, axis=1)
         p25_accuracies_0 = np.percentile(accuracies_0, 25, axis=1)
 
-        plt.figure()
-        plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
-                        fmt='o-', label=r'Accuracy at $\theta^\star$')
-        plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
-                        fmt='o-', label=r'Accuracy at $\theta_0$')
-        plt.xlabel('Number of training samples')
-        plt.ylabel('Accuracy')
-        plt.xscale('log')
-        plt.legend()
-        plt.grid()
-        plt.tight_layout()
-        plt.savefig(f"accuracy_hyperbolic_features_{method}.png")
-
-        # create bar plot for the collapses
-        plt.figure()
-        collapses /= nb_tries
-        plt.plot(m, collapses, 'o-')
-        plt.xlabel('Number of training samples')
-        plt.ylabel('Collapse rate')
-        plt.xscale('log')
-        plt.grid()
-        plt.tight_layout()
-        plt.savefig(f"collapse_hyperbolic_features_{method}.png")
+        # plt.figure()
+        # plt.errorbar(m, median_accuracies, yerr=[median_accuracies - p25_accuracies, p75_accuracies - median_accuracies],
+        #                 fmt='o-', label=r'Accuracy at $\theta^\star$')
+        # plt.errorbar(m, median_accuracies_0, yerr=[median_accuracies_0 - p25_accuracies_0, p75_accuracies_0 - median_accuracies_0],
+        #                 fmt='o-', label=r'Accuracy at $\theta_0$')
+        # plt.xlabel('Number of training samples')
+        # plt.ylabel('Accuracy')
+        # plt.xscale('log')
+        # plt.legend()
+        # plt.grid()
+        # plt.tight_layout()
+        # plt.savefig(f"accuracy_hyperbolic_features_{method}.png")
+        #
+        # # create bar plot for the collapses
+        # plt.figure()
+        # collapses /= nb_tries
+        # plt.plot(m, collapses, 'o-')
+        # plt.xlabel('Number of training samples')
+        # plt.ylabel('Collapse rate')
+        # plt.xscale('log')
+        # plt.grid()
+        # plt.tight_layout()
+        # plt.savefig(f"collapse_hyperbolic_features_{method}.png")
 
     plt.rcParams.update({'font.size': 10})

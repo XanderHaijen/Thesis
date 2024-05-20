@@ -70,43 +70,43 @@ def experiment2(seed):
         # we generate the bounding ellipses based on a bounding box around the data which we calculate a priori
         print(f"{datetime.now()} - Dimension {d} - Ellipsoid construction")
         emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(d - 1,)), -0.5, 0.5)  # random disturbance
-        # lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
-        #                                     scaling_factor=1.05)
-        # lj.type = "LJ"
-        #
+        lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
+                                            scaling_factor=1.05)
+        lj.type = "LJ"
+
         delta_w = (b - a) / 2
         ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
         ses.type = "SCC"  # smallest circumscribed cube
 
-        # r = np.dot(slope, b * np.ones((d - 1,))) + 4
-        # ses = Ellipsoid.ellipse_from_corners(-r * np.ones((d - 1,)), r * np.ones((d - 1,)), -r, r, theta=np.zeros((d - 1,)),
-        #                                      scaling_factor=1.05)
-        # ses.type = "SES"  # smallest enclosing sphere
+        r = np.dot(slope, b * np.ones((d - 1,))) + 4
+        ses = Ellipsoid.ellipse_from_corners(-r * np.ones((d - 1,)), r * np.ones((d - 1,)), -r, r, theta=np.zeros((d - 1,)),
+                                             scaling_factor=1.05)
+        ses.type = "SES"  # smallest enclosing sphere
 
         # conduct experiments for Löwner-John ellipsoid
-        # print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
-        # alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, lj, generator, slope, a, b)
-        #
-        # # write the dataframe to a text file as latex tables and to an Excel file
-        # with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.xlsx") as writer:
-        #     alpha_data.to_excel(writer, sheet_name='alpha')
-        #     loss_0_data.to_excel(writer, sheet_name='loss_0')
-        #     loss_star_data.to_excel(writer, sheet_name='loss_star')
-        #
-        # with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.txt", "w") as f:
-        #     f.write("Alpha data \n")
-        #     f.write(alpha_data.to_latex(float_format="%.0f"))
-        #     f.write("\n")
-        #     f.write("Loss 0 data \n")
-        #     f.write(loss_0_data.to_latex(float_format="%.0f"))
-        #     f.write("\n")
-        #     f.write("Loss star data \n")
-        #     f.write(loss_star_data.to_latex(float_format="%.0f"))
-        #     f.write("\n")
-        #     f.write(f"Robust cost: {loss_r}")
+        print(f"{datetime.now()} - Dimension {d}, LJ ellipsoid")
+        alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, lj, generator, slope, a, b)
 
-        # conduct experiments for smallest enclosing sphere
+        # write the dataframe to a text file as latex tables and to an Excel file
+        with pd.ExcelWriter(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.xlsx") as writer:
+            alpha_data.to_excel(writer, sheet_name='alpha')
+            loss_0_data.to_excel(writer, sheet_name='loss_0')
+            loss_star_data.to_excel(writer, sheet_name='loss_star')
+
+        with open(f"thesis_figures/multivariate_ls/full_exp/d{d}_experiment2_lj.txt", "w") as f:
+            f.write("Alpha data \n")
+            f.write(alpha_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write("Loss 0 data \n")
+            f.write(loss_0_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write("Loss star data \n")
+            f.write(loss_star_data.to_latex(float_format="%.0f"))
+            f.write("\n")
+            f.write(f"Robust cost: {loss_r}")
+
+        # # conduct experiments for smallest enclosing sphere
         print(f"{datetime.now()} - Dimension {d}, SES ellipsoid")
         alpha_data, loss_0_data, loss_star_data, loss_r = experiment2_loop(d, ses, generator, slope, a, b)
 
@@ -630,16 +630,17 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [5]
+    dimensions = [30]
+    # a, b = -5, 5
     a, b = -2, 2
     assert b > a
     generator = np.random.default_rng(seed)
     nb_tries = 100
 
-    # data_size = lambda d: [2 * d] #, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
+    # data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
     # sigmas = [0.2, 0.5] #, 1, 2]
-
-    data_size = lambda d: 3 * np.logspace(1, 6, 15, dtype=int)
+    # sigmas = [0.5, 1]
+    data_size = lambda d: 7 * np.logspace(1, 7, 15, dtype=int)
     sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
@@ -655,9 +656,9 @@ def experiment5(seed):
         delta_w = (b - a) / 2
         ses = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -delta_w, delta_w,
                                              theta=emp_slope, scaling_factor=1.05)
-        ses.type = "SES"
+        ses.type = "SCC"
 
-        sigma_subg = aux.subgaussian_parameter(d, a, b, 4, -4, emp_slope)
+        sigma_subg = aux.subgaussian_parameter(d, a, b, 2, -2, emp_slope)
 
         ellipsoids = [lj, ses]
 
@@ -720,8 +721,24 @@ def experiment5(seed):
                         lambda_array[i, j, k] = problem.results["lambda"][0]
                         alpha_array[i, j, k] = problem.results["alpha"][0]
 
-                    # remove outliers:
-                    # get the indices where the distances are not too large (w.r.t. dist_star_0)
+                    # print results
+                    with open("results.txt", "a") as f:
+                        f.write(f"Dimension {d} - {ellipsoid.type} ellipsoid\n")
+                        f.write(f"Robust cost: {cost_r}\n")
+                        f.write(f"Median test loss theta_0: {np.median(test_loss_0[i, j, :])}\n")
+                        f.write(f"25th percentile test loss theta_0: {np.percentile(test_loss_0[i, j, :], 25)}\n")
+                        f.write(f"75th percentile test loss theta_0: {np.percentile(test_loss_0[i, j, :], 75)}\n")
+                        f.write(f"Median test loss theta_star: {np.median(test_loss_star[i, j, :])}\n")
+                        f.write(f"25th percentile test loss theta_star: {np.percentile(test_loss_star[i, j, :], 25)}\n")
+                        f.write(f"75th percentile test loss theta_star: {np.percentile(test_loss_star[i, j, :], 75)}\n")
+                        f.write(f"Median test loss theta_r: {np.median(test_loss_r[i, j])}\n")
+                        f.write(f"Median test loss theta_dro: {np.median(test_loss_dro[i, j, :])}\n")
+                        f.write(f"25th percentile test loss theta_dro: {np.percentile(test_loss_dro[i, j, :], 25)}\n")
+                        f.write(f"75th percentile test loss theta_dro: {np.percentile(test_loss_dro[i, j, :], 75)}\n")
+                        f.write("---------------------------------------------\n")
+
+                    # # remove outliers:
+                    # # get the indices where the distances are not too large (w.r.t. dist_star_0)
                     # ind = np.where(dist_star_0[i, j, :] < 10 * np.median(dist_star_0[i, j, :]))
                     # dist_star_0_plot = dist_star_0[i, j, ind]
                     # dist_star_r_plot = dist_star_r[i, j, ind]
@@ -759,8 +776,8 @@ def experiment5(seed):
                     #     f"thesis_figures/multivariate_ls/distances/distances_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")
                     # plt.show()
                     # plt.close()
-                    #
-                    # # plot the loss histograms
+
+                    # plot the loss histograms
                     # fig, ax = plt.subplots()
                     # aux.plot_loss_histograms(ax, test_loss_0[i, j, :], test_loss_star[i, j, :], test_loss_r[i, j],
                     #                          title=f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}",
@@ -785,33 +802,50 @@ def experiment5(seed):
                     # plt.rcParams.update({'font.size': 15})
 
             # plot the average loss in function of m for every sigma
+
+            # save the results in a file
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_0.npy", test_loss_0)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_star.npy", test_loss_star)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_dro.npy", test_loss_dro)
+            np.save(f"results_d{d}_{ellipsoid.type}_loss_r.npy", test_loss_r)
+            np.save("ms.npy", ms)
+
             for j, sigma in enumerate(sigmas):
-                fig, ax = plt.subplots()
-                aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
+                aux.plot_loss_m(plt.gca(), np.median(test_loss_0[:, j, :], axis=1),
                                 np.percentile(test_loss_0[:, j, :], 75, axis=1),
                                 np.percentile(test_loss_0[:, j, :], 25, axis=1),
                                 np.median(test_loss_star[:, j, :], axis=1),
                                 np.percentile(test_loss_star[:, j, :], 75, axis=1),
                                 np.percentile(test_loss_star[:, j, :], 25, axis=1),
-                                np.median(test_loss_dro[:, j, :], axis=1),
-                                np.percentile(test_loss_dro[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_dro[:, j, :], 25, axis=1),
+                                None, None, None,
                                 ms, title=None)
                 plt.xscale('log')
                 plt.grid()
 
-                M = 1336357
-                invalid_dro = np.median(test_loss_dro[:, j, :], axis=1)
-                invalid_dro[ms < M] = M
-                # draw a red cross at invalid solutions
-                plt.scatter(ms, invalid_dro, color='r', marker='x')
+                M = 1_336_357
+                indices_valid = np.where(ms > M)[0]
+                indices_invalid = np.where(ms <= M)[0]
+                indices_invalid = np.append(indices_invalid, indices_valid[0])
+                invalid_dro_p50 = np.median(test_loss_dro[indices_invalid, j, :], axis=1)
+                invalid_dro_p25 = np.percentile(test_loss_dro[indices_invalid, j, :], 25, axis=1)
+                invalid_dro_p75 = np.percentile(test_loss_dro[indices_invalid, j, :], 75, axis=1)
+
+                valid_dro = np.median(test_loss_dro[indices_valid, j, :], axis=1)
+                valid_dro_p25 = np.percentile(test_loss_dro[indices_valid, j, :], 25, axis=1)
+                valid_dro_p75 = np.percentile(test_loss_dro[indices_valid, j, :], 75, axis=1)
+
+                plt.errorbar(ms[indices_invalid], invalid_dro_p50, yerr=[invalid_dro_p50 - invalid_dro_p25, invalid_dro_p75 - invalid_dro_p50],
+                                fmt='o', color='r', label="invalid bounds")
+                plt.errorbar(ms[indices_valid], valid_dro, yerr=[valid_dro - valid_dro_p25, valid_dro_p75 - valid_dro],
+                                fmt='o', color='g', label="DRO")
+
 
                 # draw a horizontal line at the robust solution
-                plt.axhline(test_loss_r[0, j], color='g', linestyle='--', label="robust")
+                plt.axhline(test_loss_r[0, j], color='black', linestyle='--', label="robust")
                 plt.legend()
                 plt.tight_layout()
                 plt.savefig(
-                    f"thesis_figures/multivariate_ls/loss_m/loss_dro_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
+                    f"loss_dro_m_d{d}_{ellipsoid.type}_sigma{sigma}.png")
                 plt.close()
 
     plt.rcParams.update({'font.size': 10})
