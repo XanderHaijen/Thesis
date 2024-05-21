@@ -233,8 +233,76 @@ def experiment2(seed):
     plt.show()
 
 
+def experiment3(seed):
+    generator = np.random.default_rng(seed)
+    d = [5, 15, 25]
+    ms = lambda d: [d, 2 * d, 3 * d, 4 * d, 6 * d, 8 * d]
+    sigma = 1
+
+    for i, dim in enumerate(d):
+        a, b = 0, 10
+        slope = np.ones((dim - 1,))
+        emp_slope = slope + np.clip(generator.normal(scale=0.5, size=(dim - 1,)), -1, 1)
+        lj = Ellipsoid.ellipse_from_corners(a * np.ones((dim - 1,)), b * np.ones((dim - 1,)), -3, 3, theta=emp_slope,
+                                            scaling_factor=1.05)
+        lj.type = "LJ"
+
+        delta_w = (b - a) / 2
+        scc = Ellipsoid.ellipse_from_corners(a * np.ones((dim - 1,)), b * np.ones((dim - 1,)), -delta_w, delta_w,
+                                             theta=emp_slope, scaling_factor=1.05)
+        scc.type = "SCC"
+
+        ellipsoids = [lj, scc]
+
+        nodes = np.linspace(0, 1, 75)
+        m = ms(dim)
+
+        test_x = (b - a) * MDG.uniform_unit_hypercube(generator, dim - 1, 1000) + a
+        test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
+                 MDG.normal_disturbance(generator, sigma, 1000, True)
+        test_data = np.vstack([test_x, test_y])
+        nb_tries = 100
+
+        for j, ellipsoid in enumerate(ellipsoids):
+
+            test_loss_star_sd = np.zeros((len(m), nb_tries))
+            cost_star_sd = np.zeros((len(m), nb_tries))
+
+            test_loss_star_classical = np.zeros((len(m), nb_tries))
+            cost_star_classical = np.zeros((len(m), nb_tries))
+
+            for k, m_val in enumerate(m):
+                with open('progress.txt', 'a') as f:
+                    f.write(f"{datetime.now()} - d = {dim}, ellipsoid = {ellipsoid.type}, m = {m_val}\n")
+
+                for l in range(nb_tries):
+                    x = (b - a) * MDG.uniform_unit_hypercube(generator, dim - 1, m_val) + a
+                    y = np.array([np.dot(x[:, i], slope) for i in range(m_val)]) + \
+                        MDG.normal_disturbance(generator, sigma, m_val, True)
+                    data = np.vstack([x, y])
+                    MDG.contain_in_ellipsoid(generator, data, ellipsoid, slope)
+
+                    problem_classical = LeastSquaresCadro(data, ellipsoid, solver=cp.MOSEK)
+                    problem_classical.solve()
+
+                    test_loss_star_classical[k, l] = problem_classical.test_loss(test_data, 'theta')
+                    cost_star_classical[k, l] = problem_classical.objective
+
+
+                    problem_sd = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes)
+                    problem_sd.solve()
+                    test_loss_star_sd[k, l] = problem_sd.test_loss(test_data, 'theta')
+                    cost_star_sd[k, l] = problem_sd.objective
+
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_sd.npy", test_loss_star_sd)
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_sd.npy", cost_star_sd)
+
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_classical.npy", test_loss_star_classical)
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_classical.npy", cost_star_classical)
+
 
 if __name__ == "__main__":
     seed = 0
-    experiment1(seed)
+    # experiment1(seed)
     # experiment2(seed)
+    experiment3(seed)
