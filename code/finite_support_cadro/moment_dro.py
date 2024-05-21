@@ -36,6 +36,7 @@ class MomentDRO:
         self.sigmaG = sigmaG
 
         self.theta = None  # set by calling solve
+        self._objective = None  # set by calling solve
 
     @property
     def mu0(self):
@@ -44,6 +45,10 @@ class MomentDRO:
     @property
     def sigma0(self):
         return self._get_moments()[1]
+
+    @property
+    def cost(self):
+        return self._objective
 
     def set_sigma(self):
         """
@@ -253,6 +258,7 @@ class MomentDRO:
             print("Problem is solved but the solution is inaccurate")
 
         self.theta = theta.value
+        self._objective = prob.value
         if verbose:
             print(f"Optimal theta: {self.theta}")
             # print values of the variables

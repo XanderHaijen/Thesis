@@ -5,6 +5,7 @@ from datetime import datetime
 from ellipsoids import Ellipsoid
 from multiple_dimension_cadro import LeastSquaresCadro
 from stochastic_dominance_cadro import StochasticDominanceCADRO
+from moment_dro import MomentDRO
 from utils.data_generator import MultivariateDataGenerator as MDG
 import utils.multivariate_experiments as aux
 
@@ -14,21 +15,24 @@ def experiment1(seed):
     Plot the difference between theta_star and theta_0/theta_r. Also plot separate figures for the loss histograms
     and alpha values.
     """
-    plt.rcParams.update({'font.size': 15})
-    dimensions = [15]
+    with open('progress_sd.txt', 'a') as f:
+        f.write(f"{datetime.now()} - Starting experiment 1\n")
+
+    # plt.rcParams.update({'font.size': 15})
+    dimensions = [50]
     a, b = -5, 5
     assert b > a
     generator = np.random.default_rng(seed)
     nb_tries = 100
 
-    data_size = lambda d: [d, 2 * d, 3 * d, 4 * d, 5 * d, 6 * d]
+    data_size = lambda d: [int(0.33 * d), int(0.5 * d), 2 * d, 3 * d, 4 * d, 5 * d]
     sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
         ms = data_size(d)
         slope = np.ones((d - 1,))
 
-        with open('progress.txt', 'a') as f:
+        with open('progress_sd.txt', 'a') as f:
             f.write(f"{datetime.now()} - d = {d}\n")
         emp_slope = slope + np.clip(generator.normal(scale=1, size=(d - 1,)), -1, 1)  # random disturbance
         lj = Ellipsoid.ellipse_from_corners(a * np.ones((d - 1,)), b * np.ones((d - 1,)), -4, 4, theta=emp_slope,
@@ -42,7 +46,7 @@ def experiment1(seed):
 
         ellipsoids = [lj, ses]
 
-        fig, ax = plt.subplots()
+        # fig, ax = plt.subplots()
 
         for ellipsoid in ellipsoids:
             test_loss_0 = np.zeros((len(ms), len(sigmas), nb_tries))
@@ -51,7 +55,7 @@ def experiment1(seed):
             test_loss_r = np.zeros((len(ms), len(sigmas)))
 
             for i, m in enumerate(ms):
-                with open('progress.txt', 'a') as f:
+                with open('progress_sd.txt', 'a') as f:
                     f.write(f"{datetime.now()} - m = {m}\n")
                 for j, sigma in enumerate(sigmas):
                     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
@@ -120,43 +124,43 @@ def experiment1(seed):
             np.save(f"results_d{d}_{ellipsoid.type}_loss_r.npy", test_loss_r)
 
             # plot the average loss in function of m for every sigma
-            ellipsoid_type = ellipsoid.type
-            colors = ['orange', 'b', 'g', 'black'] if ellipsoid_type == "LJ" else ['r', 'purple', 'brown', 'grey']
-            for j, sigma in enumerate(sigmas):
-                aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
-                                np.percentile(test_loss_0[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_0[:, j, :], 25, axis=1),
-                                np.median(test_loss_star[:, j, :], axis=1),
-                                np.percentile(test_loss_star[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_star[:, j, :], 25, axis=1),
-                                np.median(test_loss_stoch_dom[:, j, :], axis=1),
-                                np.percentile(test_loss_stoch_dom[:, j, :], 75, axis=1),
-                                np.percentile(test_loss_stoch_dom[:, j, :], 25, axis=1),
-                                ms, title=None, scale='linear', label_star=f"CADRO ({ellipsoid_type})",
-                                label_0=f"SAA ({ellipsoid_type})", label_dro=f"Stoch. Dom. ({ellipsoid_type})",
-                                colors=colors)
-
-            # draw horizontal line for the robust loss
-            ax.axhline(np.median(test_loss_r[:, 0]), color=colors[3], linestyle='dashed', linewidth=1,
-                       label=f"Robust loss ({ellipsoid_type})")
-
-        # set ylim to the largest value for the dro losses
-        bottom = min(np.min(np.percentile(test_loss_stoch_dom, 25, axis=2)),
-                        np.min(np.percentile(test_loss_star, 25, axis=2)))
-        ax.set_ylim(bottom=bottom)
-        top = max(np.max(np.percentile(test_loss_stoch_dom, 75, axis=2)),
-                  np.max(np.percentile(test_loss_star, 75, axis=2)))
-        ax.set_ylim(top=top)
-
-        plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
-        plt.grid()
-        plt.xlabel('m')
-        plt.ylabel('Loss')
-        plt.savefig(
-            f"loss_m_all_d{d}.png")
-        plt.close()
-
-    plt.rcParams.update({'font.size': 10})
+    #         ellipsoid_type = ellipsoid.type
+    #         colors = ['orange', 'b', 'g', 'black'] if ellipsoid_type == "LJ" else ['r', 'purple', 'brown', 'grey']
+    #         for j, sigma in enumerate(sigmas):
+    #             aux.plot_loss_m(ax, np.median(test_loss_0[:, j, :], axis=1),
+    #                             np.percentile(test_loss_0[:, j, :], 75, axis=1),
+    #                             np.percentile(test_loss_0[:, j, :], 25, axis=1),
+    #                             np.median(test_loss_star[:, j, :], axis=1),
+    #                             np.percentile(test_loss_star[:, j, :], 75, axis=1),
+    #                             np.percentile(test_loss_star[:, j, :], 25, axis=1),
+    #                             np.median(test_loss_stoch_dom[:, j, :], axis=1),
+    #                             np.percentile(test_loss_stoch_dom[:, j, :], 75, axis=1),
+    #                             np.percentile(test_loss_stoch_dom[:, j, :], 25, axis=1),
+    #                             ms, title=None, scale='linear', label_star=f"CADRO ({ellipsoid_type})",
+    #                             label_0=f"SAA ({ellipsoid_type})", label_dro=f"Stoch. Dom. ({ellipsoid_type})",
+    #                             colors=colors)
+    #
+    #         # draw horizontal line for the robust loss
+    #         ax.axhline(np.median(test_loss_r[:, 0]), color=colors[3], linestyle='dashed', linewidth=1,
+    #                    label=f"Robust loss ({ellipsoid_type})")
+    #
+    #     # set ylim to the largest value for the dro losses
+    #     bottom = min(np.min(np.percentile(test_loss_stoch_dom, 25, axis=2)),
+    #                     np.min(np.percentile(test_loss_star, 25, axis=2)))
+    #     ax.set_ylim(bottom=bottom)
+    #     top = max(np.max(np.percentile(test_loss_stoch_dom, 75, axis=2)),
+    #               np.max(np.percentile(test_loss_star, 75, axis=2)))
+    #     ax.set_ylim(top=top)
+    #
+    #     plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+    #     plt.grid()
+    #     plt.xlabel('m')
+    #     plt.ylabel('Loss')
+    #     plt.savefig(
+    #         f"loss_m_all_d{d}.png")
+    #     plt.close()
+    #
+    # plt.rcParams.update({'font.size': 10})
 
 
 def experiment2(seed):
@@ -234,9 +238,11 @@ def experiment2(seed):
 
 
 def experiment3(seed):
+    with open('progress_sd.txt', 'a') as f:
+        f.write(f"{datetime.now()} - Starting experiment 3\n")
     generator = np.random.default_rng(seed)
-    d = [5, 15, 25]
-    ms = lambda d: [d, 2 * d, 3 * d, 4 * d, 6 * d, 8 * d]
+    d = [25, 50]
+    ms = lambda d: [int(0.33 * d), int(0.5 * d), 2 * d, 3 * d, 4 * d, 5 * d]
     sigma = 1
 
     for i, dim in enumerate(d):
@@ -263,6 +269,8 @@ def experiment3(seed):
         test_data = np.vstack([test_x, test_y])
         nb_tries = 100
 
+        sigmaG = aux.subgaussian_parameter(dim, a, b, -4, 4, emp_slope)
+
         for j, ellipsoid in enumerate(ellipsoids):
 
             test_loss_star_sd = np.zeros((len(m), nb_tries))
@@ -271,8 +279,11 @@ def experiment3(seed):
             test_loss_star_classical = np.zeros((len(m), nb_tries))
             cost_star_classical = np.zeros((len(m), nb_tries))
 
+            cost_star_dro = np.zeros((len(m), nb_tries))
+            loss_star_dro = np.zeros((len(m), nb_tries))
+
             for k, m_val in enumerate(m):
-                with open('progress.txt', 'a') as f:
+                with open('progress_sd.txt', 'a') as f:
                     f.write(f"{datetime.now()} - d = {dim}, ellipsoid = {ellipsoid.type}, m = {m_val}\n")
 
                 for l in range(nb_tries):
@@ -294,15 +305,82 @@ def experiment3(seed):
                     test_loss_star_sd[k, l] = problem_sd.test_loss(test_data, 'theta')
                     cost_star_sd[k, l] = problem_sd.objective
 
+                    if m_val >= 2 * dim:
+                        # using less data results in a non-psd covariance matrix
+                        problem_dro = MomentDRO(ellipsoid, data, 0.05, sigmaG)
+                        problem_dro.solve(check_data=False)
+
+                        cost_star_dro[k, l] = problem_dro.cost
+                        loss_star_dro[k, l] = problem_dro.test_loss(test_data)
+
+
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_sd.npy", test_loss_star_sd)
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_sd.npy", cost_star_sd)
 
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_classical.npy", test_loss_star_classical)
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_classical.npy", cost_star_classical)
 
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_dro.npy", loss_star_dro)
+            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_dro.npy", cost_star_dro)
+
+
+def experiment_3b():
+    plt.rcParams.update({'font.size': 15})
+    # load the results
+    d = [5, 15, 25]
+    ellipsoids = ["LJ", "SCC"]
+
+    plt.figure()
+    md = [0.33, 0.5, 1, 2, 3, 4, 6, 8]
+
+    for ellipsoid in ellipsoids:
+        for dim in d:
+            loss_star_sd = np.load(f"results_estimation_d{dim}_{ellipsoid}_loss_star_sd.npy")
+            cost_star_sd = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_sd.npy")
+            loss_star_classical = np.load(f"results_estimation_d{dim}_{ellipsoid}_loss_star_classical.npy")
+            cost_star_classical = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_classical.npy")
+            loss_star_dro = np.load(f"results_estimation_d{dim}_{ellipsoid}_loss_star_dro.npy")
+            cost_star_dro = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_dro.npy")
+
+            overestimation_sd = (cost_star_sd - loss_star_sd) / loss_star_sd
+            overestimation_classical = (cost_star_classical - loss_star_classical) / loss_star_classical
+            overestimation_dro = (cost_star_dro - loss_star_dro) / loss_star_dro
+
+            est_sd_p50 = np.percentile(overestimation_sd, 50, axis=1)
+            est_sd_p25 = np.percentile(overestimation_sd, 25, axis=1)
+            est_sd_p75 = np.percentile(overestimation_sd, 75, axis=1)
+
+            est_classical_p50 = np.percentile(overestimation_classical, 50, axis=1)
+            est_classical_p25 = np.percentile(overestimation_classical, 25, axis=1)
+            est_classical_p75 = np.percentile(overestimation_classical, 75, axis=1)
+
+            est_dro_p50 = np.percentile(overestimation_dro, 50, axis=1)
+            est_dro_p25 = np.percentile(overestimation_dro, 25, axis=1)
+            est_dro_p75 = np.percentile(overestimation_dro, 75, axis=1)
+
+            # plot the overestimation
+            plt.errorbar(md, est_sd_p50, yerr=[est_sd_p50 - est_sd_p25, est_sd_p75 - est_sd_p50],
+                         label=f"Stoch. Dom. (d={dim})", fmt='o-')
+            plt.errorbar(md, est_classical_p50, yerr=[est_classical_p50 - est_classical_p25, est_classical_p75 - est_classical_p50],
+                            label=f"CADRO (d={dim})", fmt='o-')
+            plt.errorbar(md[1:], est_dro_p50, yerr=[est_dro_p50 - est_dro_p25, est_dro_p75 - est_dro_p50],
+                            label=f"Mom. DRO* (d={dim})", fmt='o-', alpha=0.5)
+        plt.xlabel("m/d")
+        plt.ylabel("Overestimation")
+        plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+        plt.grid()
+        plt.title(f"{ellipsoid} ellipsoid")
+        plt.gcf().set_size_inches(12, 5)
+        plt.tight_layout()
+        plt.savefig(f"thesis_figures/stoch_dom/overestimation_{ellipsoid}.pdf")
+        plt.close()
+
+
+
 
 if __name__ == "__main__":
     seed = 0
     # experiment1(seed)
     # experiment2(seed)
-    experiment3(seed)
+    # experiment3(seed)
+    experiment_3b()
