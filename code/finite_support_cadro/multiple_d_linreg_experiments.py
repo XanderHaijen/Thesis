@@ -630,7 +630,7 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [30]
+    dimensions = [10]
     # a, b = -5, 5
     a, b = -2, 2
     assert b > a
@@ -640,7 +640,7 @@ def experiment5(seed):
     # data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
     # sigmas = [0.2, 0.5] #, 1, 2]
     # sigmas = [0.5, 1]
-    data_size = lambda d: 7 * np.logspace(1, 7, 15, dtype=int)
+    data_size = lambda d: 5 * np.logspace(1, 6, 15, dtype=int)
     sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
@@ -720,22 +720,6 @@ def experiment5(seed):
                         # fill in lambda array and alpha array
                         lambda_array[i, j, k] = problem.results["lambda"][0]
                         alpha_array[i, j, k] = problem.results["alpha"][0]
-
-                    # print results
-                    with open("results.txt", "a") as f:
-                        f.write(f"Dimension {d} - {ellipsoid.type} ellipsoid\n")
-                        f.write(f"Robust cost: {cost_r}\n")
-                        f.write(f"Median test loss theta_0: {np.median(test_loss_0[i, j, :])}\n")
-                        f.write(f"25th percentile test loss theta_0: {np.percentile(test_loss_0[i, j, :], 25)}\n")
-                        f.write(f"75th percentile test loss theta_0: {np.percentile(test_loss_0[i, j, :], 75)}\n")
-                        f.write(f"Median test loss theta_star: {np.median(test_loss_star[i, j, :])}\n")
-                        f.write(f"25th percentile test loss theta_star: {np.percentile(test_loss_star[i, j, :], 25)}\n")
-                        f.write(f"75th percentile test loss theta_star: {np.percentile(test_loss_star[i, j, :], 75)}\n")
-                        f.write(f"Median test loss theta_r: {np.median(test_loss_r[i, j])}\n")
-                        f.write(f"Median test loss theta_dro: {np.median(test_loss_dro[i, j, :])}\n")
-                        f.write(f"25th percentile test loss theta_dro: {np.percentile(test_loss_dro[i, j, :], 25)}\n")
-                        f.write(f"75th percentile test loss theta_dro: {np.percentile(test_loss_dro[i, j, :], 75)}\n")
-                        f.write("---------------------------------------------\n")
 
                     # # remove outliers:
                     # # get the indices where the distances are not too large (w.r.t. dist_star_0)
@@ -822,7 +806,7 @@ def experiment5(seed):
                 plt.xscale('log')
                 plt.grid()
 
-                M = 1_336_357
+                M = 4_956_137
                 indices_valid = np.where(ms > M)[0]
                 indices_invalid = np.where(ms <= M)[0]
                 indices_invalid = np.append(indices_invalid, indices_valid[0])

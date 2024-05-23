@@ -25,7 +25,7 @@ def experiment1(seed):
     generator = np.random.default_rng(seed)
     nb_tries = 100
 
-    data_size = lambda d: [int(0.33 * d), int(0.5 * d), 2 * d, 3 * d, 4 * d, 5 * d]
+    data_size = lambda d: (np.logspace(np.log10(0.25), np.log10(4), 8, base=10) * d).astype(int)
     sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
@@ -242,7 +242,8 @@ def experiment3(seed):
         f.write(f"{datetime.now()} - Starting experiment 3\n")
     generator = np.random.default_rng(seed)
     d = [25, 50]
-    ms = lambda d: [int(0.33 * d), int(0.5 * d), 2 * d, 3 * d, 4 * d, 5 * d]
+    # ms is a logspace between 0.25 and 5
+    ms = lambda d: (np.logspace(np.log10(0.25), np.log10(4), 8, base=10) * d).astype(int)
     sigma = 1
 
     for i, dim in enumerate(d):
@@ -299,7 +300,6 @@ def experiment3(seed):
                     test_loss_star_classical[k, l] = problem_classical.test_loss(test_data, 'theta')
                     cost_star_classical[k, l] = problem_classical.objective
 
-
                     problem_sd = StochasticDominanceCADRO(data, ellipsoid, threshold_type=nodes)
                     problem_sd.solve()
                     test_loss_star_sd[k, l] = problem_sd.test_loss(test_data, 'theta')
@@ -312,7 +312,6 @@ def experiment3(seed):
 
                         cost_star_dro[k, l] = problem_dro.cost
                         loss_star_dro[k, l] = problem_dro.test_loss(test_data)
-
 
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_sd.npy", test_loss_star_sd)
             np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_sd.npy", cost_star_sd)
@@ -327,13 +326,15 @@ def experiment3(seed):
 def experiment_3b():
     plt.rcParams.update({'font.size': 15})
     # load the results
-    d = [5, 15, 25]
-    ellipsoids = ["LJ", "SCC"]
+    d = [25, 50]
+    ellipsoids = ["LJ"]  # ["LJ", "SCC"]
 
     plt.figure()
-    md = [0.33, 0.5, 1, 2, 3, 4, 6, 8]
-
+    md = [0.33, 0.5, 1, 1.5, 2, 3, 4, 5]
+    # generate a list of colors from the standard color cycle
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for ellipsoid in ellipsoids:
+        k = 0
         for dim in d:
             loss_star_sd = np.load(f"results_estimation_d{dim}_{ellipsoid}_loss_star_sd.npy")
             cost_star_sd = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_sd.npy")
@@ -342,6 +343,10 @@ def experiment_3b():
             loss_star_dro = np.load(f"results_estimation_d{dim}_{ellipsoid}_loss_star_dro.npy")
             cost_star_dro = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_dro.npy")
 
+            # exclude the first two values of m for dro
+            loss_star_dro = loss_star_dro[4:, :]
+            cost_star_dro = cost_star_dro[4:, :]
+
             overestimation_sd = (cost_star_sd - loss_star_sd) / loss_star_sd
             overestimation_classical = (cost_star_classical - loss_star_classical) / loss_star_classical
             overestimation_dro = (cost_star_dro - loss_star_dro) / loss_star_dro
@@ -349,33 +354,54 @@ def experiment_3b():
             est_sd_p50 = np.percentile(overestimation_sd, 50, axis=1)
             est_sd_p25 = np.percentile(overestimation_sd, 25, axis=1)
             est_sd_p75 = np.percentile(overestimation_sd, 75, axis=1)
+            est_sd_max = np.max(overestimation_sd, axis=1)
+            est_sd_min = np.min(overestimation_sd, axis=1)
 
             est_classical_p50 = np.percentile(overestimation_classical, 50, axis=1)
             est_classical_p25 = np.percentile(overestimation_classical, 25, axis=1)
             est_classical_p75 = np.percentile(overestimation_classical, 75, axis=1)
+            est_classical_max = np.max(overestimation_classical, axis=1)
+            est_classical_min = np.min(overestimation_classical, axis=1)
 
             est_dro_p50 = np.percentile(overestimation_dro, 50, axis=1)
             est_dro_p25 = np.percentile(overestimation_dro, 25, axis=1)
             est_dro_p75 = np.percentile(overestimation_dro, 75, axis=1)
+            est_dro_max = np.max(overestimation_dro, axis=1)
+            est_dro_min = np.min(overestimation_dro, axis=1)
 
             # plot the overestimation
             plt.errorbar(md, est_sd_p50, yerr=[est_sd_p50 - est_sd_p25, est_sd_p75 - est_sd_p50],
-                         label=f"Stoch. Dom. (d={dim})", fmt='o-')
-            plt.errorbar(md, est_classical_p50, yerr=[est_classical_p50 - est_classical_p25, est_classical_p75 - est_classical_p50],
-                            label=f"CADRO (d={dim})", fmt='o-')
-            plt.errorbar(md[1:], est_dro_p50, yerr=[est_dro_p50 - est_dro_p25, est_dro_p75 - est_dro_p50],
-                            label=f"Mom. DRO* (d={dim})", fmt='o-', alpha=0.5)
+                         label=f"Stoch. Dom. (d={dim})", fmt='o-', color=colors[k])
+            plt.scatter(md, est_sd_min, color=colors[k], marker='o', facecolors='none')
+            plt.scatter(md, est_sd_max, color=colors[k], marker='o', facecolors='none')
+            k += 1
+
+            plt.errorbar(md, est_classical_p50,
+                         yerr=[est_classical_p50 - est_classical_p25, est_classical_p75 - est_classical_p50],
+                         label=f"CADRO (d={dim})", fmt='o-', color=colors[k])
+            plt.scatter(md, est_classical_min, color=colors[k], marker='o', facecolors='none')
+            plt.scatter(md, est_classical_max, color=colors[k], marker='o', facecolors='none')
+            k += 1
+
+            plt.errorbar(md[4:], est_dro_p50, yerr=[est_dro_p50 - est_dro_p25, est_dro_p75 - est_dro_p50],
+                         label=f"Mom. DRO* (d={dim})", fmt='o-', alpha=0.5, color=colors[k])
+            plt.scatter(md[4:], est_dro_min, marker='o', facecolors='none', alpha=0.5, color=colors[k])
+            plt.scatter(md[4:], est_dro_max, marker='o', facecolors='none', alpha=0.5, color=colors[k])
+            k += 1
+
         plt.xlabel("m/d")
         plt.ylabel("Overestimation")
         plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+        plt.yscale('log')
         plt.grid()
         plt.title(f"{ellipsoid} ellipsoid")
+        plt.ylim([0.5, 50])
+        plt.yticks([0.5, 1, 5, 1e1, 50], [0.5, 1, 5, 10, 50])
         plt.gcf().set_size_inches(12, 5)
         plt.tight_layout()
         plt.savefig(f"thesis_figures/stoch_dom/overestimation_{ellipsoid}.pdf")
+        plt.show()
         plt.close()
-
-
 
 
 if __name__ == "__main__":
