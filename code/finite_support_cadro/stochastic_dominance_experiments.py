@@ -23,7 +23,7 @@ def experiment1(seed):
     a, b = -5, 5
     assert b > a
     generator = np.random.default_rng(seed)
-    nb_tries = 100
+    nb_tries = 300
 
     data_size = lambda d: (np.logspace(np.log10(0.25), np.log10(4), 8, base=10) * d).astype(int)
     sigmas = [1]
@@ -58,9 +58,9 @@ def experiment1(seed):
                 with open('progress_sd.txt', 'a') as f:
                     f.write(f"{datetime.now()} - m = {m}\n")
                 for j, sigma in enumerate(sigmas):
-                    test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
-                    test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
-                             MDG.normal_disturbance(generator, sigma, 1000, True)
+                    test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 10000) + a
+                    test_y = np.array([np.dot(test_x[:, k], slope) for k in range(10000)]) + \
+                             MDG.normal_disturbance(generator, sigma, 10000, True)
                     test_data = np.vstack([test_x, test_y])
                     MDG.contain_in_ellipsoid(generator, test_data, ellipsoid, slope)
                     for k in range(nb_tries):
@@ -183,9 +183,9 @@ def experiment2(seed):
     # add 1 to nodes
     # nodes = np.append(nodes, 1)
 
-    test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
-    test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
-             MDG.normal_disturbance(generator, sigma, 1000, True)
+    test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 10000) + a
+    test_y = np.array([np.dot(test_x[:, k], slope) for k in range(10000)]) + \
+             MDG.normal_disturbance(generator, sigma, 10000, True)
     test_data = np.vstack([test_x, test_y])
     MDG.contain_in_ellipsoid(generator, test_data, ellipsoid, slope)
 
@@ -264,11 +264,11 @@ def experiment3(seed):
         nodes = np.linspace(0, 1, 75)
         m = ms(dim)
 
-        test_x = (b - a) * MDG.uniform_unit_hypercube(generator, dim - 1, 1000) + a
-        test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
-                 MDG.normal_disturbance(generator, sigma, 1000, True)
+        test_x = (b - a) * MDG.uniform_unit_hypercube(generator, dim - 1, 10000) + a
+        test_y = np.array([np.dot(test_x[:, k], slope) for k in range(10000)]) + \
+                 MDG.normal_disturbance(generator, sigma, 10000, True)
         test_data = np.vstack([test_x, test_y])
-        nb_tries = 100
+        nb_tries = 300
 
         sigmaG = aux.subgaussian_parameter(dim, a, b, -4, 4, emp_slope)
 
