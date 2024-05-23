@@ -257,7 +257,7 @@ class ContinuousCADRO:
             if problem.status == cp.INFEASIBLE or infeasible:
                 print("Infeasible problem for eta_bar. Using sample-based approach.")
                 # construct the loss for all points in training and calibration data
-                loss = np.array([self._scalar_loss(self.theta_0[index], self.data[0, i], self.data[1:, i])
+                loss = np.array([self._scalar_loss(self.theta_0[index], self.data[:-1, i], self.data[-1, i])
                                  for i in range(self.data.shape[1])])
                 eta_bar = safety * np.max(loss)
                 if index == 0:
