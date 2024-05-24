@@ -119,7 +119,8 @@ class LeastSquaresCadro(ContinuousCADRO):
         :return: The loss function calculated for the given theta and data as a scalar.
         """
         if not cvxpy:
-            loss = (np.dot(theta, x) - y) ** 2
+            x = np.reshape(x, (x.shape[0], 1))
+            loss = (np.dot(theta.T, x) - y) ** 2
             return loss[0, 0]  # reshape to scalar
         else:
             return cp.square(cp.matmul(cp.transpose(theta), x) - y)

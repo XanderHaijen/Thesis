@@ -161,8 +161,9 @@ class StochasticDominanceCADRO(ContinuousCADRO):
         :return: The loss function calculated for the given theta and data as a scalar.
         """
         if not cvxpy:
-            loss = (theta.T @ x - y) ** 2
-            return loss[0]  # reshape to scalar
+            x = x.reshape((-1, 1))
+            loss = (np.dot(theta.T, x) - y) ** 2
+            return loss[0, 0]
         else:
             return cp.square(cp.matmul(cp.transpose(theta), x) - y)
 

@@ -79,19 +79,16 @@ if __name__ == "__main__":
     data = np.vstack((x, y))
     ellipsoid = Ellipsoid.ellipse_from_corners(np.array([0] * (d - 1)), np.array([10] * (d - 1)), -5, 5,
                                                slope - 0.5, 1.05)
-    # tester = CADRO1DLinearRegressionTester(data, ellipsoid, nb_theta0=2)
-    # generate 100 Chebyshev nodes on [0, 1]
-    nodes = 0.5 * np.cos((2 * np.arange(1, 101) - 1) * np.pi / 200) + 0.5
-    tester = StochasticDominanceTester(data, ellipsoid)
+    tester = LeastSquaresTester(data, ellipsoid)
     results = tester.run()
     print("theta ", results["theta"])
     print("theta_r ", results["theta_r"])
     print("theta_0 ", results["theta_0"])
 
-    nodes = tester.problem.thresholds
-    lambdas = results["lambda"]
-    alphas = results["alpha"]
-    plt.scatter(nodes, alphas / np.max(alphas), marker='o', color='b', label='alpha (normalized)')
-    plt.scatter(nodes, lambdas, marker='.', color='r', label='lambda')
-    plt.legend()
-    plt.show()
+    # nodes = tester.problem.thresholds
+    # lambdas = results["lambda"]
+    # alphas = results["alpha"]
+    # plt.scatter(nodes, alphas / np.max(alphas), marker='o', color='b', label='alpha (normalized)')
+    # plt.scatter(nodes, lambdas, marker='.', color='r', label='lambda')
+    # plt.legend()
+    # plt.show()

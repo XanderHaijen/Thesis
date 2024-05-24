@@ -218,8 +218,8 @@ class ContinuousCADRO:
                                               full_output=True)
         gamma = calibration.info['radius']
         kappa = int(np.ceil(m_cal * gamma))
-        eta = np.array([self._scalar_loss(self.theta_0[index], self.data[0, self.split + i],
-                                          self.data[1, self.split + i]) for i in range(m_cal)])
+        eta = np.array([self._scalar_loss(self.theta_0[index], self.data[:-1, self.split + i],
+                                          self.data[-1, self.split + i]) for i in range(m_cal)])
         eta.sort(axis=0)
         eta_bar = self._eta_bar(index=index)
         if eta_bar is None:
