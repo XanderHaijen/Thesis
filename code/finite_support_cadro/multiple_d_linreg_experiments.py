@@ -630,7 +630,7 @@ def experiment5(seed):
     and alpha values.
     """
     plt.rcParams.update({'font.size': 15})
-    dimensions = [10]
+    dimensions = [8]
     # a, b = -5, 5
     a, b = -2, 2
     assert b > a
@@ -640,7 +640,7 @@ def experiment5(seed):
     # data_size = lambda d: [2 * d, 5 * d, 8 * d, 12 * d, 20 * d, 25 * d]
     # sigmas = [0.2, 0.5] #, 1, 2]
     # sigmas = [0.5, 1]
-    data_size = lambda d: 5 * np.logspace(1, 6, 15, dtype=int)
+    data_size = lambda d: 6 * np.logspace(1, 6, 15, dtype=int)
     sigmas = [1]
 
     for n_d, d in enumerate(dimensions):
@@ -663,28 +663,31 @@ def experiment5(seed):
         ellipsoids = [lj, ses]
 
         for ellipsoid in ellipsoids:
-            dist_star_0 = np.zeros((len(ms), len(sigmas), nb_tries))
-            dist_star_r = np.zeros((len(ms), len(sigmas), nb_tries))
-            dist_r_0 = np.zeros((len(ms), len(sigmas), nb_tries))
+            with open("progress.txt", "a") as f:
+                f.write('------------------------------------------------------\n')
+                f.write(f"{datetime.now()} - Dimension {d} - Ellipsoid {ellipsoid.type}\n")
+            # dist_star_0 = np.zeros((len(ms), len(sigmas), nb_tries))
+            # dist_star_r = np.zeros((len(ms), len(sigmas), nb_tries))
+            # dist_r_0 = np.zeros((len(ms), len(sigmas), nb_tries))
 
             test_loss_0 = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_star = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_dro = np.zeros((len(ms), len(sigmas), nb_tries))
             test_loss_r = np.zeros((len(ms), len(sigmas)))
 
-            alpha_array = np.zeros((len(ms), len(sigmas), nb_tries))
-            lambda_array = np.zeros((len(ms), len(sigmas), nb_tries))
+            # alpha_array = np.zeros((len(ms), len(sigmas), nb_tries))
+            # lambda_array = np.zeros((len(ms), len(sigmas), nb_tries))
 
             # get robust cost
             robust_opt = RobustOptimization(ellipsoid)
             robust_opt.solve_least_squares()
-            theta_r = robust_opt.theta
-            cost_r = robust_opt.cost
+            # theta_r = robust_opt.theta
+            # cost_r = robust_opt.cost
 
             for i, m in enumerate(ms):
-                print(f"{datetime.now()} - m = {m}")
+                with open("progress.txt", "a") as f:
+                    f.write(f"{datetime.now()} - Dimension {d} - m = {m}\n")
                 for j, sigma in enumerate(sigmas):
-                    print(f"{datetime.now()} - sigma = {sigma}")
                     test_x = (b - a) * MDG.uniform_unit_hypercube(generator, d - 1, 1000) + a
                     test_y = np.array([np.dot(test_x[:, k], slope) for k in range(1000)]) + \
                              MDG.normal_disturbance(generator, sigma, 1000, True)
@@ -706,9 +709,9 @@ def experiment5(seed):
                         theta_dro = dro.solve(check_data=False)
 
                         # fill in the distance arrays
-                        dist_star_0[i, j, k] = np.linalg.norm(problem.results["theta"] - problem.results["theta_0"])
-                        dist_star_r[i, j, k] = np.linalg.norm(problem.results["theta"] - theta_r)
-                        dist_r_0[i, j, k] = np.linalg.norm(problem.results["theta_r"] - problem.results["theta_0"])
+                        # dist_star_0[i, j, k] = np.linalg.norm(problem.results["theta"] - problem.results["theta_0"])
+                        # dist_star_r[i, j, k] = np.linalg.norm(problem.results["theta"] - theta_r)
+                        # dist_r_0[i, j, k] = np.linalg.norm(problem.results["theta_r"] - problem.results["theta_0"])
 
                         # fill in the loss arrays
                         test_loss_0[i, j, k] = problem.test_loss(test_data, 'theta_0')
@@ -718,8 +721,8 @@ def experiment5(seed):
                             test_loss_r[i, j] = problem.test_loss(test_data, 'theta_r')
 
                         # fill in lambda array and alpha array
-                        lambda_array[i, j, k] = problem.results["lambda"][0]
-                        alpha_array[i, j, k] = problem.results["alpha"][0]
+                        # lambda_array[i, j, k] = problem.results["lambda"][0]
+                        # alpha_array[i, j, k] = problem.results["alpha"][0]
 
                     # # remove outliers:
                     # # get the indices where the distances are not too large (w.r.t. dist_star_0)
@@ -764,9 +767,10 @@ def experiment5(seed):
                     # plot the loss histograms
                     # fig, ax = plt.subplots()
                     # aux.plot_loss_histograms(ax, test_loss_0[i, j, :], test_loss_star[i, j, :], test_loss_r[i, j],
-                    #                          title=f"Dimension {d} - {ellipsoid.type} - m = {m} - sigma = {sigma}",
-                    #                          bins=30)
-                    #
+                    #                          bins=30, title=None)
+                    # plt.xlabel("Loss")
+                    # plt.ylabel("Count")
+                    # plt.legend()
                     # plt.tight_layout()
                     # plt.savefig(
                     #     f"thesis_figures/multivariate_ls/histograms/hist_loss_d{d}_{ellipsoid.type}_m{m}_sigma{sigma}.png")

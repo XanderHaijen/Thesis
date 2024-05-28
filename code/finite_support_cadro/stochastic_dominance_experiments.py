@@ -327,10 +327,10 @@ def experiment_3b():
     plt.rcParams.update({'font.size': 15})
     # load the results
     d = [25, 50]
-    ellipsoids = ["LJ"]  # ["LJ", "SCC"]
+    ellipsoids = ["LJ", "SCC"]
 
     plt.figure()
-    md = [0.33, 0.5, 1, 1.5, 2, 3, 4, 5]
+    md = np.logspace(np.log10(0.25), np.log10(4), 8, base=10)
     # generate a list of colors from the standard color cycle
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     for ellipsoid in ellipsoids:
@@ -344,8 +344,8 @@ def experiment_3b():
             cost_star_dro = np.load(f"results_estimation_d{dim}_{ellipsoid}_cost_star_dro.npy")
 
             # exclude the first two values of m for dro
-            loss_star_dro = loss_star_dro[4:, :]
-            cost_star_dro = cost_star_dro[4:, :]
+            loss_star_dro = loss_star_dro[-2:, :]
+            cost_star_dro = cost_star_dro[-2:, :]
 
             overestimation_sd = (cost_star_sd - loss_star_sd) / loss_star_sd
             overestimation_classical = (cost_star_classical - loss_star_classical) / loss_star_classical
@@ -383,20 +383,22 @@ def experiment_3b():
             plt.scatter(md, est_classical_max, color=colors[k], marker='o', facecolors='none')
             k += 1
 
-            plt.errorbar(md[4:], est_dro_p50, yerr=[est_dro_p50 - est_dro_p25, est_dro_p75 - est_dro_p50],
+            plt.errorbar(md[-2:], est_dro_p50, yerr=[est_dro_p50 - est_dro_p25, est_dro_p75 - est_dro_p50],
                          label=f"Mom. DRO* (d={dim})", fmt='o-', alpha=0.5, color=colors[k])
-            plt.scatter(md[4:], est_dro_min, marker='o', facecolors='none', alpha=0.5, color=colors[k])
-            plt.scatter(md[4:], est_dro_max, marker='o', facecolors='none', alpha=0.5, color=colors[k])
+            plt.scatter(md[-2:], est_dro_min, marker='o', facecolors='none', alpha=0.5, color=colors[k])
+            plt.scatter(md[-2:], est_dro_max, marker='o', facecolors='none', alpha=0.5, color=colors[k])
             k += 1
 
         plt.xlabel("m/d")
         plt.ylabel("Overestimation")
         plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
         plt.yscale('log')
+        plt.xscale('log')
         plt.grid()
         plt.title(f"{ellipsoid} ellipsoid")
-        plt.ylim([0.5, 50])
-        plt.yticks([0.5, 1, 5, 1e1, 50], [0.5, 1, 5, 10, 50])
+        # plt.ylim([0.5, 5])
+        plt.yticks([1, 5, 10], [1, 5, 10])
+        plt.xticks(md, np.round(md, 2))
         plt.gcf().set_size_inches(12, 5)
         plt.tight_layout()
         plt.savefig(f"thesis_figures/stoch_dom/overestimation_{ellipsoid}.pdf")
