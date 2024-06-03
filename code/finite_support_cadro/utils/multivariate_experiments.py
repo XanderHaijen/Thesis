@@ -8,23 +8,29 @@ sys.path.append('..')
 from finite_support_cadro.ellipsoids import Ellipsoid
 
 
-def plot_alphas(gca, alpha_array, lambda_array, loss_r, title=None, boxplot=False, scale='linear', marker='.'):
+def plot_alphas(gca, alpha_array, lambda_array, loss_r, title=None, boxplot=False,
+                scale='linear', marker='.', opacity: float = 1.0):
     ind_lambdas_1 = np.where(lambda_array > 0.99)
     ind_lambdas_0 = np.where(lambda_array < 0.01)
     ind_lambdas_else = np.where((lambda_array <= 0.99) & (lambda_array >= 0.01))
     # plot a horizontal line at the robust cost
     gca.axhline(loss_r, color='black', linestyle='dashed', linewidth=1)
     # boxplot, overlayed with the actual values of alpha
+
+
+    gca.scatter(np.ones(len(ind_lambdas_1[0])), alpha_array[ind_lambdas_1],
+                label=r"$\lambda \approx 1$", color='b', marker=marker, alpha=opacity)
+    gca.scatter(np.ones(len(ind_lambdas_0[0])), alpha_array[ind_lambdas_0],
+                label=r"$\lambda \approx 0$", color='r', marker=marker, alpha=opacity)
+    gca.scatter(np.ones(len(ind_lambdas_else[0])), alpha_array[ind_lambdas_else],
+                label=r"$\lambda$ otherwise", color='g', marker=marker, alpha=opacity)
+
     if boxplot:
         gca.boxplot(alpha_array, showfliers=False)
+
     if scale == 'log':
         gca.set_yscale('log')
-    gca.scatter(np.ones(len(ind_lambdas_1[0])), alpha_array[ind_lambdas_1],
-                label=r"$\lambda \approx 1$", color='b', marker=marker)
-    gca.scatter(np.ones(len(ind_lambdas_0[0])), alpha_array[ind_lambdas_0],
-                label=r"$\lambda \approx 0$", color='r', marker=marker)
-    gca.scatter(np.ones(len(ind_lambdas_else[0])), alpha_array[ind_lambdas_else],
-                label=r"$\lambda$ otherwise", color='g', marker=marker)
+
     if title is not None:
         gca.set_title(title)
     # remove x ticks

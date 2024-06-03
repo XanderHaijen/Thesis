@@ -240,11 +240,13 @@ def experiment2(seed):
 def experiment3(seed):
     with open('progress_sd.txt', 'a') as f:
         f.write(f"{datetime.now()} - Starting experiment 3\n")
+    print(f"{datetime.now()} - Starting experiment 3")
     generator = np.random.default_rng(seed)
-    d = [25, 50]
+    d = [5, 15]
     # ms is a logspace between 0.25 and 5
-    ms = lambda d: (np.logspace(np.log10(0.25), np.log10(4), 8, base=10) * d).astype(int)
-    sigma = 1
+    # ms = lambda d: (np.logspace(np.log10(0.25), np.log10(4), 8, base=10) * d).astype(int)
+    ms = lambda d: [d, 2*d, 3*d, 4*d, 5*d]
+    sigma = 2
 
     for i, dim in enumerate(d):
         a, b = 0, 10
@@ -259,7 +261,7 @@ def experiment3(seed):
                                              theta=emp_slope, scaling_factor=1.05)
         scc.type = "SCC"
 
-        ellipsoids = [lj, scc]
+        ellipsoids = [scc]
 
         nodes = np.linspace(0, 1, 75)
         m = ms(dim)
@@ -268,7 +270,7 @@ def experiment3(seed):
         test_y = np.array([np.dot(test_x[:, k], slope) for k in range(10000)]) + \
                  MDG.normal_disturbance(generator, sigma, 10000, True)
         test_data = np.vstack([test_x, test_y])
-        nb_tries = 300
+        nb_tries = 150
 
         sigmaG = aux.subgaussian_parameter(dim, a, b, -4, 4, emp_slope)
 
@@ -286,6 +288,7 @@ def experiment3(seed):
             for k, m_val in enumerate(m):
                 with open('progress_sd.txt', 'a') as f:
                     f.write(f"{datetime.now()} - d = {dim}, ellipsoid = {ellipsoid.type}, m = {m_val}\n")
+                print(f"{datetime.now()} - d = {dim}, ellipsoid = {ellipsoid.type}, m = {m_val}")
 
                 for l in range(nb_tries):
                     x = (b - a) * MDG.uniform_unit_hypercube(generator, dim - 1, m_val) + a
@@ -313,14 +316,31 @@ def experiment3(seed):
                         cost_star_dro[k, l] = problem_dro.cost
                         loss_star_dro[k, l] = problem_dro.test_loss(test_data)
 
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_sd.npy", test_loss_star_sd)
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_sd.npy", cost_star_sd)
+            # plot the losses as a function of m
+            plt.figure()
+            aux.plot_loss_m(plt.gca(), np.median(test_loss_star_classical, axis=1),
+                            np.percentile(test_loss_star_classical, 75, axis=1),
+                            np.percentile(test_loss_star_classical, 25, axis=1),
+                            np.median(test_loss_star_sd, axis=1),
+                            np.percentile(test_loss_star_sd, 75, axis=1),
+                            np.percentile(test_loss_star_sd, 25, axis=1),
+                            np.median(loss_star_dro, axis=1),
+                            np.percentile(loss_star_dro, 75, axis=1),
+                            np.percentile(loss_star_dro, 25, axis=1),
+                            m, title=None, scale='linear', label_star='CADRO', label_0='SAA', label_dro='Mom. DRO')
+            plt.grid()
+            plt.tight_layout()
+            plt.savefig(f"thesis_figures/stoch_dom/loss_m_d{dim}_{ellipsoid.type}_sigma{sigma}.pdf")
+            plt.show()
 
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_classical.npy", test_loss_star_classical)
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_classical.npy", cost_star_classical)
-
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_dro.npy", loss_star_dro)
-            np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_dro.npy", cost_star_dro)
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_sd.npy", test_loss_star_sd)
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_sd.npy", cost_star_sd)
+            #
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_classical.npy", test_loss_star_classical)
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_classical.npy", cost_star_classical)
+            #
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_loss_star_dro.npy", loss_star_dro)
+            # np.save(f"results_estimation_d{dim}_{ellipsoid.type}_cost_star_dro.npy", cost_star_dro)
 
 
 def experiment_3b():
@@ -410,5 +430,5 @@ if __name__ == "__main__":
     seed = 0
     # experiment1(seed)
     # experiment2(seed)
-    # experiment3(seed)
-    experiment_3b()
+    experiment3(seed)
+    # experiment_3b()
