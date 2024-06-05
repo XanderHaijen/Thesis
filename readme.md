@@ -2,7 +2,7 @@
 
 This project is an implementation of the CADRO algorithm for bounded and real-valued disturbances. It is a generalization
 of the algorithm by Schuurmans & Patrinos (2023), who developed it for finite and discrete distributions. This code was
-developed in the context of a Master's thesis at the STADIUS group of the KU Leuven. This code is specifically for the
+developed in the context of a Master's thesis at the STADIUS group of the KU Leuven (Haijen, 2024). This code is specifically for the
 case of linear least squares regression, since this allows for an implementation as a convex Semidefinite Program (SDP).
 
 ## Project structure
@@ -47,10 +47,19 @@ The code was developed using Python 3.8 and several libraries. The main dependen
 `numpy` and `cvxpy`. For the algorithms, we use the MOSEK solver, which is a commercial solver. The code can be run
 using other solvers, but the performance might be worse. The experiments also use `matplotlib` and `pandas`.
 
-## Own use and contact
-You are free to use this code for your own research, but please cite either this repository or the master's thesis for which this code was
-developed (Haijen, 2024). If you have any questions or remarks, feel free to contact me at `xanderhayen2@gmail.com` or contact
-the research group of the supervisor of the master's thesis.
+## Copyright
+**© Copyright KU Leuven**
+
+Without written permission of the supervisor and the author it is forbidden to
+reproduce or adapt in any form or by any means any part of this repository.
+Requests for obtaining the right to reproduce or utilize parts of this publication
+should be addressed to the Departement Computerwetenschappen, Celestijnenlaan
+200A bus 2402, B-3001 Leuven, +32-16-327700 or by email info@cs.kuleuven.be.
+
+A written permission of the supervisor is also required to use the methods, products,
+schematics and programmes described in this repository for industrial or commercial use,
+and for submitting this publication in scientific contests.
+
 
 
 ## References
