@@ -65,5 +65,6 @@ and for submitting this publication in scientific contests.
 ## References
 - Schuurmans, M., & Patrinos, P. (2023). Distributionally Robust Optimization Using Cost-Aware Ambiguity Sets. _IEEE Control Systems Letters_, 7, 1855–1860. https://doi.org/10.1109/LCSYS.2023.3281974
 - Coppens, P., & Patrinos, P. (2023). Ordered Risk Minimization: Learning More from Less Data. _2023 62nd IEEE Conference on Decision and Control (CDC)_, 2003–2009. https://doi.org/10.1109/CDC49753.2023.10383728
-- Haijen, X. (2024). Cost-aware distributionally robust optimization. [Unpublished Master's thesis]. KU Leuven, Belgium.
+- Haijen, X., Patrinos, P., Schuurmans, M., & Coppens, P. (2024). Cost-aware Distributionally Robust Optimization. KU Leuven. Faculty of Engineering Science.
+
 ```
